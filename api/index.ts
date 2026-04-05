@@ -146,6 +146,29 @@ app.get("/api/debug/transactions-sample", async (req, res) => {
   }
 });
 
+// Debug: inspect customers schema
+app.get("/api/debug/customers-sample", async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit as string) || 1, 5);
+    const { data, error } = await supabase
+      .from("customers")
+      .select("*")
+      .limit(limit);
+
+    if (error) {
+      logger.error({ err: error, context: "GET /api/debug/customers-sample" }, "Supabase error");
+      res
+        .status(500)
+        .json({ error: error.message, context: "GET /api/debug/customers-sample" });
+      return;
+    }
+
+    res.json(data ?? []);
+  } catch (err) {
+    respond500(res, "GET /api/debug/customers-sample", err);
+  }
+});
+
 // Customers routes
 app.get("/api/customers", async (req, res) => {
   try {
