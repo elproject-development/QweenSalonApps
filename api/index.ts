@@ -122,9 +122,9 @@ app.get("/api/dashboard/summary", async (req, res) => {
     startDate.setDate(startDate.getDate() - days);
     
     const [customersResult, servicesResult, staffResult] = await Promise.all([
-      supabase.from("customers").select("id").count(),
-      supabase.from("services").select("id").count(),
-      supabase.from("staff").select("id").count(),
+      supabase.from("customers").select("id", { count: "exact" }),
+      supabase.from("services").select("id", { count: "exact" }),
+      supabase.from("staff").select("id", { count: "exact" }),
     ]);
     
     res.json({
