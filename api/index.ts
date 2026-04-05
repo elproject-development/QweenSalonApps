@@ -251,7 +251,14 @@ app.get("/api/transactions", async (req, res) => {
       return;
     }
 
-    res.json(result.data ?? []);
+    const transactions = (result.data ?? []).map((t: any) => ({
+      ...t,
+      total: Number(pickFirst(t, ["total_amount", "total", "grand_total", "amount"]) ?? 0),
+      receiptNumber: pickFirst(t, ["receipt_number", "receipt_no", "receipt", "invoice_number"]) ?? t.id,
+      customerName: pickFirst(t, ["customer_name", "customerName", "customer"]) ?? "",
+    }));
+
+    res.json(transactions);
   } catch (err) {
     respond500(res, "GET /api/transactions", err);
   }
