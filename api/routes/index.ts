@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import { Router } from "express";
 import healthRouter from "./health";
 import customersRouter from "./customers-supabase";
 import servicesRouter from "./services-supabase";
@@ -8,7 +8,7 @@ import expensesRouter from "./expenses-supabase";
 import appointmentsRouter from "./appointments-supabase";
 import dashboardRouter from "./dashboard-supabase";
 
-const router: IRouter = Router();
+const router = Router();
 
 router.use(healthRouter);
 router.get("/test", (req, res) => {

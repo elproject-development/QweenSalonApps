@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import { Router } from "express";
 import { SupabaseDB } from "../lib/supabase-db";
 import {
   GetDashboardSummaryQueryParams,
@@ -6,7 +6,7 @@ import {
   GetRecentTransactionsQueryParams,
 } from "../lib/api-zod";
 
-const router: IRouter = Router();
+const router = Router();
 
 router.get("/dashboard/summary", async (req, res): Promise<void> => {
   const query = GetDashboardSummaryQueryParams.safeParse(req.query);

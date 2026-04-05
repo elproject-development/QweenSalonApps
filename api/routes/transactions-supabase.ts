@@ -1,7 +1,7 @@
-import { Router, type IRouter } from "express";
+import { Router } from "express";
 import { supabase } from "../lib/supabase";
 
-const router: IRouter = Router();
+const router = Router();
 
 router.get("/", async (req, res): Promise<void> => {
   try {
