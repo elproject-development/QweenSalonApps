@@ -2,13 +2,45 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
-import { supabase } from "./lib/supabase";
-import { logger } from "./lib/logger";
+import { createClient } from "@supabase/supabase-js";
+import pino from "pino";
 import {
   GetDashboardSummaryQueryParams,
   GetRevenueChartQueryParams,
   GetRecentTransactionsQueryParams,
 } from "./lib/api-zod";
+
+// Supabase client
+const supabaseUrl =
+  process.env.SUPABASE_URL ||
+  process.env.VITE_SUPABASE_URL ||
+  "https://your-project-ref.supabase.co";
+
+const supabaseKey =
+  process.env.SUPABASE_ANON_KEY ||
+  process.env.VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY ||
+  "your-anon-key";
+
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+// Logger
+const isProduction = process.env.NODE_ENV === "production";
+const logger = pino({
+  level: process.env.LOG_LEVEL ?? "info",
+  redact: [
+    "req.headers.authorization",
+    "req.headers.cookie",
+    "res.headers['set-cookie']",
+  ],
+  ...(isProduction
+    ? {}
+    : {
+        transport: {
+          target: "pino-pretty",
+          options: { colorize: true },
+        },
+      }),
+});
 
 const app = express();
 
