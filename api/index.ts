@@ -137,4 +137,33 @@ app.get("/api/dashboard/summary", async (req, res) => {
   }
 });
 
+app.get("/api/dashboard/recent-transactions", async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 5;
+    
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("id, receipt_number, customer_name, total, created_at")
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    
+    if (error) {
+      res.status(500).json({ error: error.message });
+      return;
+    }
+    
+    const transactions = data?.map(t => ({
+      id: t.id,
+      receiptNumber: t.receipt_number,
+      customerName: t.customer_name,
+      total: t.total,
+      createdAt: t.created_at
+    })) || [];
+    
+    res.json(transactions);
+  } catch (err) {
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 export default app;
