@@ -275,11 +275,11 @@ app.get("/api/transactions", async (req, res) => {
 
     const transactions = (result.data ?? []).map((t: any) => {
       const customerId = pickFirst(t, ["customer_id", "customerId"]);
+      const rawReceipt = pickFirst(t, ["receipt_number", "receipt_no", "receipt", "invoice_number"]);
       return {
         ...t,
         total: Number(pickFirst(t, ["total_amount", "total", "grand_total", "amount"]) ?? 0),
-        receiptNumber:
-          pickFirst(t, ["receipt_number", "receipt_no", "receipt", "invoice_number"]) ?? t.id,
+        receiptNumber: rawReceipt || `INV-${String(t.id).slice(0, 8).toUpperCase()}`,
         customerName:
           pickFirst(t, ["customer_name", "customerName", "customer"]) ??
           (customerId ? customerNameById.get(String(customerId)) : "") ??
