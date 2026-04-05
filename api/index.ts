@@ -4,11 +4,6 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import { createClient } from "@supabase/supabase-js";
 import pino from "pino";
-import {
-  GetDashboardSummaryQueryParams,
-  GetRevenueChartQueryParams,
-  GetRecentTransactionsQueryParams,
-} from "./lib/api-zod";
 
 // Supabase client
 const supabaseUrl =
@@ -41,6 +36,21 @@ const logger = pino({
         },
       }),
 });
+
+function errorToMessage(err: unknown) {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return "Unknown error";
+  }
+}
+
+function respond500(res: any, context: string, err: unknown) {
+  logger.error({ err, context }, "API error");
+  res.status(500).json({ error: errorToMessage(err), context });
+}
 
 const app = express();
 
@@ -93,12 +103,54 @@ app.get("/api/customers", async (req, res) => {
     
     const { data, error } = await query;
     if (error) {
-      res.status(500).json({ error: error.message });
+      logger.error({ err: error, context: "GET /api/customers" }, "Supabase error");
+      res.status(500).json({ error: error.message, context: "GET /api/customers" });
       return;
     }
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    respond500(res, "GET /api/customers", err);
+  }
+});
+
+// Appointments routes
+app.get("/api/appointments", async (req, res) => {
+  try {
+    const { date, status } = req.query as { date?: string; status?: string };
+
+    const baseQuery = supabase
+      .from("appointments")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    let query = baseQuery;
+
+    if (date) {
+      // Expect YYYY-MM-DD; filter by appointment_date if exists
+      query = query.eq("appointment_date", date);
+    }
+    if (status) {
+      query = query.eq("status", status);
+    }
+
+    let { data, error } = await query;
+    if (error && date && error.message.toLowerCase().includes("appointment_date")) {
+      // Retry with a more generic column name used in some schemas
+      const retryQuery = status ? baseQuery.eq("status", status).eq("date", date) : baseQuery.eq("date", date);
+      const retry = await retryQuery;
+      data = retry.data;
+      error = retry.error;
+    }
+
+    if (error) {
+      logger.error({ err: error, context: "GET /api/appointments" }, "Supabase error");
+      res.status(500).json({ error: error.message, context: "GET /api/appointments" });
+      return;
+    }
+
+    res.json(data ?? []);
+  } catch (err) {
+    respond500(res, "GET /api/appointments", err);
   }
 });
 
@@ -117,12 +169,13 @@ app.get("/api/services", async (req, res) => {
     
     const { data, error } = await query;
     if (error) {
-      res.status(500).json({ error: error.message });
+      logger.error({ err: error, context: "GET /api/services" }, "Supabase error");
+      res.status(500).json({ error: error.message, context: "GET /api/services" });
       return;
     }
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    respond500(res, "GET /api/services", err);
   }
 });
 
@@ -135,12 +188,13 @@ app.get("/api/staff", async (req, res) => {
       .order("created_at", { ascending: false });
     
     if (error) {
-      res.status(500).json({ error: error.message });
+      logger.error({ err: error, context: "GET /api/staff" }, "Supabase error");
+      res.status(500).json({ error: error.message, context: "GET /api/staff" });
       return;
     }
     res.json(data);
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    respond500(res, "GET /api/staff", err);
   }
 });
 
@@ -158,6 +212,18 @@ app.get("/api/dashboard/summary", async (req, res) => {
       supabase.from("services").select("id", { count: "exact" }),
       supabase.from("staff").select("id", { count: "exact" }),
     ]);
+
+    if (customersResult.error || servicesResult.error || staffResult.error) {
+      res.status(500).json({
+        error:
+          customersResult.error?.message ||
+          servicesResult.error?.message ||
+          staffResult.error?.message ||
+          "Unknown supabase error",
+        context: "GET /api/dashboard/summary",
+      });
+      return;
+    }
     
     res.json({
       totalCustomers: customersResult.count || 0,
@@ -165,7 +231,7 @@ app.get("/api/dashboard/summary", async (req, res) => {
       totalStaff: staffResult.count || 0,
     });
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    respond500(res, "GET /api/dashboard/summary", err);
   }
 });
 
@@ -180,7 +246,13 @@ app.get("/api/dashboard/recent-transactions", async (req, res) => {
       .limit(limit);
     
     if (error) {
-      res.status(500).json({ error: error.message });
+      logger.error(
+        { err: error, context: "GET /api/dashboard/recent-transactions" },
+        "Supabase error",
+      );
+      res
+        .status(500)
+        .json({ error: error.message, context: "GET /api/dashboard/recent-transactions" });
       return;
     }
     
@@ -194,7 +266,7 @@ app.get("/api/dashboard/recent-transactions", async (req, res) => {
     
     res.json(transactions);
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    respond500(res, "GET /api/dashboard/recent-transactions", err);
   }
 });
 
@@ -213,7 +285,10 @@ app.get("/api/dashboard/revenue-chart", async (req, res) => {
       .order("created_at", { ascending: true });
     
     if (error) {
-      res.status(500).json({ error: error.message });
+      logger.error({ err: error, context: "GET /api/dashboard/revenue-chart" }, "Supabase error");
+      res
+        .status(500)
+        .json({ error: error.message, context: "GET /api/dashboard/revenue-chart" });
       return;
     }
     
@@ -231,7 +306,7 @@ app.get("/api/dashboard/revenue-chart", async (req, res) => {
     
     res.json(chartData);
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    respond500(res, "GET /api/dashboard/revenue-chart", err);
   }
 });
 
@@ -246,7 +321,10 @@ app.get("/api/dashboard/top-services", async (req, res) => {
       `);
     
     if (error) {
-      res.status(500).json({ error: error.message });
+      logger.error({ err: error, context: "GET /api/dashboard/top-services" }, "Supabase error");
+      res
+        .status(500)
+        .json({ error: error.message, context: "GET /api/dashboard/top-services" });
       return;
     }
     
@@ -276,7 +354,7 @@ app.get("/api/dashboard/top-services", async (req, res) => {
     
     res.json(topServices);
   } catch (err) {
-    res.status(500).json({ error: "Internal server error" });
+    respond500(res, "GET /api/dashboard/top-services", err);
   }
 });
 
