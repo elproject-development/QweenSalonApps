@@ -122,53 +122,6 @@ app.get("/api/test", (req, res) => {
   res.json({ message: "Routes are working!" });
 });
 
-// Debug: inspect transactions schema (remove later if you want)
-app.get("/api/debug/transactions-sample", async (req, res) => {
-  try {
-    const limit = Math.min(parseInt(req.query.limit as string) || 1, 5);
-    const { data, error } = await supabase
-      .from("transactions")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(limit);
-
-    if (error) {
-      logger.error({ err: error, context: "GET /api/debug/transactions-sample" }, "Supabase error");
-      res
-        .status(500)
-        .json({ error: error.message, context: "GET /api/debug/transactions-sample" });
-      return;
-    }
-
-    res.json(data ?? []);
-  } catch (err) {
-    respond500(res, "GET /api/debug/transactions-sample", err);
-  }
-});
-
-// Debug: inspect customers schema
-app.get("/api/debug/customers-sample", async (req, res) => {
-  try {
-    const limit = Math.min(parseInt(req.query.limit as string) || 1, 5);
-    const { data, error } = await supabase
-      .from("customers")
-      .select("*")
-      .limit(limit);
-
-    if (error) {
-      logger.error({ err: error, context: "GET /api/debug/customers-sample" }, "Supabase error");
-      res
-        .status(500)
-        .json({ error: error.message, context: "GET /api/debug/customers-sample" });
-      return;
-    }
-
-    res.json(data ?? []);
-  } catch (err) {
-    respond500(res, "GET /api/debug/customers-sample", err);
-  }
-});
-
 // Customers routes
 app.get("/api/customers", async (req, res) => {
   try {
