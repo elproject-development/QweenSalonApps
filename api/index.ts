@@ -316,30 +316,56 @@ app.get("/api/expenses", async (req, res) => {
 app.get("/api/dashboard/summary", async (req, res) => {
   try {
     const period = (req.query.period as string) || "7d";
-    const days = period === "7d" ? 7 : period === "30d" ? 30 : 1;
-    
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
-    
-    const [customersResult, servicesResult, staffResult] = await Promise.all([
-      supabase.from("customers").select("id", { count: "exact" }),
-      supabase.from("services").select("id", { count: "exact" }),
-      supabase.from("staff").select("id", { count: "exact" }),
-    ]);
+    let days = 7;
+    if (period === "today") days = 0;
+    else if (period === "30d" || period === "month") days = 30;
+    else if (period === "year") days = 365;
 
-    if (customersResult.error || servicesResult.error || staffResult.error) {
+    const startDate = new Date();
+    if (days > 0) {
+      startDate.setDate(startDate.getDate() - days);
+    } else {
+      startDate.setHours(0, 0, 0, 0);
+    }
+
+    const [customersResult, servicesResult, staffResult, transactionsResult, appointmentsResult] =
+      await Promise.all([
+        supabase.from("customers").select("id", { count: "exact", head: true }),
+        supabase.from("services").select("id", { count: "exact", head: true }),
+        supabase.from("staff").select("id", { count: "exact", head: true }),
+        supabase
+          .from("transactions")
+          .select("total_amount", { count: "exact" })
+          .gte("created_at", startDate.toISOString()),
+        supabase
+          .from("appointments")
+          .select("id", { count: "exact", head: true })
+          .gte("created_at", startDate.toISOString()),
+      ]);
+
+    if (customersResult.error || servicesResult.error || staffResult.error || transactionsResult.error) {
       res.status(500).json({
         error:
           customersResult.error?.message ||
           servicesResult.error?.message ||
           staffResult.error?.message ||
+          transactionsResult.error?.message ||
           "Unknown supabase error",
         context: "GET /api/dashboard/summary",
       });
       return;
     }
-    
+
+    const revenue = (transactionsResult.data ?? []).reduce(
+      (sum, t) => sum + Number(t.total_amount || 0),
+      0,
+    );
+
     res.json({
+      revenue,
+      transactionCount: transactionsResult.count || 0,
+      customerCount: customersResult.count || 0,
+      appointmentCount: appointmentsResult.count || 0,
       totalCustomers: customersResult.count || 0,
       totalServices: servicesResult.count || 0,
       totalStaff: staffResult.count || 0,
