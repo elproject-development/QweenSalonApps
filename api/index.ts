@@ -299,6 +299,8 @@ app.get("/api/dashboard/recent-transactions", async (req, res) => {
 
     const context = "GET /api/dashboard/recent-transactions";
     const projections = [
+      // schema from your DB
+      "id, customer_id, total_amount, created_at",
       // common snake_case
       "id, receipt_number, customer_name, total, created_at",
       // other variants
@@ -326,15 +328,47 @@ app.get("/api/dashboard/recent-transactions", async (req, res) => {
       return;
     }
 
+    const customerIds = Array.from(
+      new Set(
+        (result.data ?? [])
+          .map((t) => pickFirst(t, ["customer_id", "customerId"]))
+          .filter(Boolean),
+      ),
+    );
+
+    let customerNameById = new Map<string, string>();
+    if (customerIds.length > 0) {
+      const { data: customers, error: customersError } = await supabase
+        .from("customers")
+        .select("id, name")
+        .in("id", customerIds);
+
+      if (customersError) {
+        logger.warn(
+          { err: customersError, context },
+          "Failed to resolve customer names; returning empty names",
+        );
+      } else {
+        customerNameById = new Map(
+          (customers ?? []).map((c: any) => [String(c.id), String(c.name ?? "")]),
+        );
+      }
+    }
+
     const transactions =
       result.data?.map((t) => {
         const receiptNumber =
           pickFirst(t, ["receipt_number", "receipt_no", "receipt", "invoice_number"]) ??
           String(t.id);
-        const customerName = pickFirst(t, ["customer_name", "customerName", "customer"]) ?? "";
+
+        const customerId = pickFirst(t, ["customer_id", "customerId"]);
+        const customerName =
+          pickFirst(t, ["customer_name", "customerName", "customer"]) ??
+          (customerId ? customerNameById.get(String(customerId)) : "") ??
+          "";
+
         const total = Number(
-          pickFirst(t, ["total", "total_amount", "grand_total", "amount", "grandTotal"])
-            ?? 0,
+          pickFirst(t, ["total_amount", "total", "grand_total", "amount", "grandTotal"]) ?? 0,
         );
         const createdAt = pickFirst(t, ["created_at", "createdAt"]) ?? new Date().toISOString();
 
@@ -363,8 +397,9 @@ app.get("/api/dashboard/revenue-chart", async (req, res) => {
     
     const context = "GET /api/dashboard/revenue-chart";
     const projections = [
-      "total, created_at",
+      // schema from your DB
       "total_amount, created_at",
+      "total, created_at",
       "grand_total, created_at",
       "amount, created_at",
       "created_at",
@@ -386,7 +421,7 @@ app.get("/api/dashboard/revenue-chart", async (req, res) => {
       const createdAt = pickFirst(transaction, ["created_at", "createdAt"]);
       const dateLabel = createdAt ? new Date(createdAt).toLocaleDateString() : "Unknown";
       const value = Number(
-        pickFirst(transaction, ["total", "total_amount", "grand_total", "amount"]) ?? 0,
+        pickFirst(transaction, ["total_amount", "total", "grand_total", "amount"]) ?? 0,
       );
       revenueByDay[dateLabel] = (revenueByDay[dateLabel] || 0) + value;
     });
@@ -436,7 +471,9 @@ app.get("/api/dashboard/top-services", async (req, res) => {
         const serviceName =
           String(pickFirst(it, ["serviceName", "service_name", "name"]) ?? "Unknown");
         const qty = Number(pickFirst(it, ["quantity", "qty"]) ?? 1);
-        const price = Number(pickFirst(it, ["price", "unitPrice", "unit_price"]) ?? 0);
+        const price = Number(
+          pickFirst(it, ["price", "service_price", "unitPrice", "unit_price"]) ?? 0,
+        );
         const revenue = qty * price;
 
         const key = String(serviceId);
