@@ -1,5 +1,15 @@
 {
   "version": 2,
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/index.ts"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/$1"
+    }
+  ],
   "buildCommand": "pnpm run build",
   "outputDirectory": "dist"
 }
