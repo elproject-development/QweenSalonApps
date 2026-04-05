@@ -52,6 +52,40 @@ function respond500(res: any, context: string, err: unknown) {
   res.status(500).json({ error: errorToMessage(err), context });
 }
 
+async function trySelect<T>(
+  context: string,
+  table: string,
+  selectProjections: string[],
+  apply: (q: any) => any = (q) => q,
+): Promise<{ data: T[] | null; usedSelect: string | null; error: any | null }> {
+  for (const projection of selectProjections) {
+    const q = apply(supabase.from(table).select(projection));
+    // eslint-disable-next-line no-await-in-loop
+    const { data, error } = await q;
+    if (!error) {
+      return { data, usedSelect: projection, error: null };
+    }
+    logger.warn(
+      { err: error, context, table, projection },
+      "Supabase select failed, trying next projection",
+    );
+  }
+
+  return {
+    data: null,
+    usedSelect: null,
+    error: { message: "No valid projection found", context, table },
+  };
+}
+
+function pickFirst(obj: any, keys: string[]) {
+  for (const k of keys) {
+    const v = obj?.[k];
+    if (v !== undefined && v !== null) return v;
+  }
+  return undefined;
+}
+
 const app = express();
 
 app.use(
@@ -238,32 +272,57 @@ app.get("/api/dashboard/summary", async (req, res) => {
 app.get("/api/dashboard/recent-transactions", async (req, res) => {
   try {
     const limit = parseInt(req.query.limit as string) || 5;
-    
-    const { data, error } = await supabase
-      .from("transactions")
-      .select("id, receipt_number, customer_name, total, created_at")
-      .order("created_at", { ascending: false })
-      .limit(limit);
-    
-    if (error) {
-      logger.error(
-        { err: error, context: "GET /api/dashboard/recent-transactions" },
-        "Supabase error",
-      );
-      res
-        .status(500)
-        .json({ error: error.message, context: "GET /api/dashboard/recent-transactions" });
+
+    const context = "GET /api/dashboard/recent-transactions";
+    const projections = [
+      // common snake_case
+      "id, receipt_number, customer_name, total, created_at",
+      // other variants
+      "id, receipt_no, customer_name, total, created_at",
+      "id, receipt, customer_name, total, created_at",
+      "id, invoice_number, customer_name, total, created_at",
+      // totals variants
+      "id, receipt_number, customer_name, total_amount, created_at",
+      "id, receipt_no, customer_name, total_amount, created_at",
+      "id, receipt_number, customer_name, grand_total, created_at",
+      "id, receipt_no, customer_name, grand_total, created_at",
+      "id, receipt_number, customer_name, amount, created_at",
+      "id, receipt_no, customer_name, amount, created_at",
+      // minimal fallback
+      "id, created_at",
+    ];
+
+    const result = await trySelect<any>(context, "transactions", projections, (q) =>
+      q.order("created_at", { ascending: false }).limit(limit),
+    );
+
+    if (result.error) {
+      logger.error({ err: result.error, context }, "Supabase error");
+      res.status(500).json({ error: errorToMessage(result.error), context });
       return;
     }
-    
-    const transactions = data?.map(t => ({
-      id: t.id,
-      receiptNumber: t.receipt_number,
-      customerName: t.customer_name,
-      total: t.total,
-      createdAt: t.created_at
-    })) || [];
-    
+
+    const transactions =
+      result.data?.map((t) => {
+        const receiptNumber =
+          pickFirst(t, ["receipt_number", "receipt_no", "receipt", "invoice_number"]) ??
+          String(t.id);
+        const customerName = pickFirst(t, ["customer_name", "customerName", "customer"]) ?? "";
+        const total = Number(
+          pickFirst(t, ["total", "total_amount", "grand_total", "amount", "grandTotal"])
+            ?? 0,
+        );
+        const createdAt = pickFirst(t, ["created_at", "createdAt"]) ?? new Date().toISOString();
+
+        return {
+          id: t.id,
+          receiptNumber,
+          customerName,
+          total,
+          createdAt,
+        };
+      }) ?? [];
+
     res.json(transactions);
   } catch (err) {
     respond500(res, "GET /api/dashboard/recent-transactions", err);
@@ -278,25 +337,34 @@ app.get("/api/dashboard/revenue-chart", async (req, res) => {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
     
-    const { data, error } = await supabase
-      .from("transactions")
-      .select("total, created_at")
-      .gte("created_at", startDate.toISOString())
-      .order("created_at", { ascending: true });
-    
-    if (error) {
-      logger.error({ err: error, context: "GET /api/dashboard/revenue-chart" }, "Supabase error");
-      res
-        .status(500)
-        .json({ error: error.message, context: "GET /api/dashboard/revenue-chart" });
+    const context = "GET /api/dashboard/revenue-chart";
+    const projections = [
+      "total, created_at",
+      "total_amount, created_at",
+      "grand_total, created_at",
+      "amount, created_at",
+      "created_at",
+    ];
+
+    const result = await trySelect<any>(context, "transactions", projections, (q) =>
+      q.gte("created_at", startDate.toISOString()).order("created_at", { ascending: true }),
+    );
+
+    if (result.error) {
+      logger.error({ err: result.error, context }, "Supabase error");
+      res.status(500).json({ error: errorToMessage(result.error), context });
       return;
     }
-    
+
     // Group by day
     const revenueByDay: { [key: string]: number } = {};
-    data?.forEach(transaction => {
-      const date = new Date(transaction.created_at).toLocaleDateString();
-      revenueByDay[date] = (revenueByDay[date] || 0) + transaction.total;
+    result.data?.forEach((transaction) => {
+      const createdAt = pickFirst(transaction, ["created_at", "createdAt"]);
+      const dateLabel = createdAt ? new Date(createdAt).toLocaleDateString() : "Unknown";
+      const value = Number(
+        pickFirst(transaction, ["total", "total_amount", "grand_total", "amount"]) ?? 0,
+      );
+      revenueByDay[dateLabel] = (revenueByDay[dateLabel] || 0) + value;
     });
     
     const chartData = Object.entries(revenueByDay).map(([date, revenue]) => ({
@@ -312,46 +380,61 @@ app.get("/api/dashboard/revenue-chart", async (req, res) => {
 
 app.get("/api/dashboard/top-services", async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from("transaction_items")
-      .select(`
-        service_id,
-        services!inner(name, price),
-        quantity
-      `);
-    
-    if (error) {
-      logger.error({ err: error, context: "GET /api/dashboard/top-services" }, "Supabase error");
-      res
-        .status(500)
-        .json({ error: error.message, context: "GET /api/dashboard/top-services" });
+    const context = "GET /api/dashboard/top-services";
+
+    // Your DB doesn't have transaction_items. Try to compute from transactions.items (jsonb)
+    const result = await trySelect<any>(
+      context,
+      "transactions",
+      ["items, created_at", "items"],
+      (q) => q.order("created_at", { ascending: false }).limit(200),
+    );
+
+    if (result.error) {
+      // Can't compute; return empty but not 500 so dashboard still works
+      logger.warn({ err: result.error, context }, "Cannot compute top services; returning empty list");
+      res.json([]);
       return;
     }
-    
-    // Aggregate by service
-    const serviceStats: { [key: string]: { count: number; revenue: number; name: string } } = {};
-    data?.forEach(item => {
-      const serviceId = item.service_id;
-      const serviceName = (item.services as any)?.name || 'Unknown';
-      const revenue = item.quantity * ((item.services as any)?.price || 0);
-      
-      if (!serviceStats[serviceId]) {
-        serviceStats[serviceId] = { count: 0, revenue: 0, name: serviceName };
+
+    const serviceStats: Record<
+      string,
+      { count: number; revenue: number; name: string; serviceId: number }
+    > = {};
+
+    for (const tx of result.data ?? []) {
+      const items = (tx as any).items;
+      if (!Array.isArray(items)) continue;
+
+      for (const it of items) {
+        const serviceId = Number(pickFirst(it, ["serviceId", "service_id", "id"]) ?? 0);
+        if (!serviceId) continue;
+        const serviceName =
+          String(pickFirst(it, ["serviceName", "service_name", "name"]) ?? "Unknown");
+        const qty = Number(pickFirst(it, ["quantity", "qty"]) ?? 1);
+        const price = Number(pickFirst(it, ["price", "unitPrice", "unit_price"]) ?? 0);
+        const revenue = qty * price;
+
+        const key = String(serviceId);
+        if (!serviceStats[key]) {
+          serviceStats[key] = { serviceId, name: serviceName, count: 0, revenue: 0 };
+        }
+
+        serviceStats[key].count += qty;
+        serviceStats[key].revenue += revenue;
       }
-      serviceStats[serviceId].count += item.quantity;
-      serviceStats[serviceId].revenue += revenue;
-    });
-    
-    const topServices = Object.entries(serviceStats)
-      .map(([serviceId, stats]) => ({
-        serviceId: parseInt(serviceId),
-        serviceName: stats.name,
-        count: stats.count,
-        revenue: stats.revenue
-      }))
+    }
+
+    const topServices = Object.values(serviceStats)
       .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 5);
-    
+      .slice(0, 5)
+      .map((s) => ({
+        serviceId: s.serviceId,
+        serviceName: s.name,
+        count: s.count,
+        revenue: s.revenue,
+      }));
+
     res.json(topServices);
   } catch (err) {
     respond500(res, "GET /api/dashboard/top-services", err);
