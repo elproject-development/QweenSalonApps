@@ -232,6 +232,50 @@ app.get("/api/staff", async (req, res) => {
   }
 });
 
+// Transactions routes
+app.get("/api/transactions", async (req, res) => {
+  try {
+    const context = "GET /api/transactions";
+    const projections = [
+      "id, customer_id, items, total_amount, payment_method, payment_status, created_at, notes, discount, tax, subtotal, staff_id",
+      "id, customer_id, total_amount, created_at",
+      "*"
+    ];
+
+    const result = await trySelect<any>(context, "transactions", projections, (q) =>
+      q.order("created_at", { ascending: false })
+    );
+
+    if (result.error) {
+      respond500(res, context, result.error);
+      return;
+    }
+
+    res.json(result.data ?? []);
+  } catch (err) {
+    respond500(res, "GET /api/transactions", err);
+  }
+});
+
+// Expenses routes
+app.get("/api/expenses", async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("expenses")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      logger.error({ err: error, context: "GET /api/expenses" }, "Supabase error");
+      res.status(500).json({ error: error.message, context: "GET /api/expenses" });
+      return;
+    }
+    res.json(data ?? []);
+  } catch (err) {
+    respond500(res, "GET /api/expenses", err);
+  }
+});
+
 // Dashboard routes
 app.get("/api/dashboard/summary", async (req, res) => {
   try {
