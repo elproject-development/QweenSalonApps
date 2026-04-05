@@ -10,5 +10,7 @@
       "source": "/api/(.*)",
       "destination": "/api/index"
     }
-  ]
+  ],
+  "buildCommand": "pnpm run build",
+  "outputDirectory": "dist"
 }
