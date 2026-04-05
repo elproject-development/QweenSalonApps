@@ -20,9 +20,6 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Logger
 const isProduction = process.env.NODE_ENV === "production";
-console.log("Starting API... Production:", isProduction);
-console.log("Supabase URL present:", !!process.env.SUPABASE_URL || !!process.env.VITE_SUPABASE_URL);
-
 const logger = pino({
   level: process.env.LOG_LEVEL ?? "info",
   redact: [
@@ -63,7 +60,6 @@ async function trySelect<T>(
 ): Promise<{ data: T[] | null; usedSelect: string | null; error: any | null }> {
   for (const projection of selectProjections) {
     const q = apply(supabase.from(table).select(projection));
-    // eslint-disable-next-line no-await-in-loop
     const { data, error } = await q;
     if (!error) {
       return { data, usedSelect: projection, error: null };
@@ -115,12 +111,15 @@ app.use(
 app.use(cors());
 app.use(express.json());
 
-// Health check
+// Base API route to check if index.ts is reachable
+app.get("/api", (req, res) => {
+  res.json({ message: "API is reachable", production: isProduction });
+});
+
 app.get("/api/health", (req, res) => {
   res.json({ ok: true });
 });
 
-// Test endpoint
 app.get("/api/test", (req, res) => {
   res.json({ message: "Routes are working!" });
 });
@@ -163,7 +162,6 @@ app.get("/api/appointments", async (req, res) => {
     let query = baseQuery;
 
     if (date) {
-      // Expect YYYY-MM-DD; filter by appointment_date if exists
       query = query.eq("appointment_date", date);
     }
     if (status) {
@@ -172,7 +170,6 @@ app.get("/api/appointments", async (req, res) => {
 
     let { data, error } = await query;
     if (error && date && error.message.toLowerCase().includes("appointment_date")) {
-      // Retry with a more generic column name used in some schemas
       const retryQuery = status ? baseQuery.eq("status", status).eq("date", date) : baseQuery.eq("date", date);
       const retry = await retryQuery;
       data = retry.data;
@@ -319,26 +316,10 @@ app.get("/api/dashboard/summary", async (req, res) => {
 app.get("/api/dashboard/recent-transactions", async (req, res) => {
   try {
     const limit = parseInt(req.query.limit as string) || 5;
-
     const context = "GET /api/dashboard/recent-transactions";
     const projections = [
-      // schema from your DB
       "id, customer_id, total_amount, created_at",
-      // common snake_case
-      "id, receipt_number, customer_name, total, created_at",
-      // other variants
-      "id, receipt_no, customer_name, total, created_at",
-      "id, receipt, customer_name, total, created_at",
-      "id, invoice_number, customer_name, total, created_at",
-      // totals variants
-      "id, receipt_number, customer_name, total_amount, created_at",
-      "id, receipt_no, customer_name, total_amount, created_at",
-      "id, receipt_number, customer_name, grand_total, created_at",
-      "id, receipt_no, customer_name, grand_total, created_at",
-      "id, receipt_number, customer_name, amount, created_at",
-      "id, receipt_no, customer_name, amount, created_at",
-      // minimal fallback
-      "id, created_at",
+      "*"
     ];
 
     const result = await trySelect<any>(context, "transactions", projections, (q) =>
@@ -366,12 +347,7 @@ app.get("/api/dashboard/recent-transactions", async (req, res) => {
         .select("id, name")
         .in("id", customerIds);
 
-      if (customersError) {
-        logger.warn(
-          { err: customersError, context },
-          "Failed to resolve customer names; returning empty names",
-        );
-      } else {
+      if (!customersError) {
         customerNameById = new Map(
           (customers ?? []).map((c: any) => [String(c.id), String(c.name ?? "")]),
         );
@@ -414,31 +390,21 @@ app.get("/api/dashboard/revenue-chart", async (req, res) => {
   try {
     const period = req.query.period as string || "week";
     const days = period === "week" ? 7 : period === "month" ? 30 : 1;
-    
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
     
     const context = "GET /api/dashboard/revenue-chart";
-    const projections = [
-      // schema from your DB
-      "total_amount, created_at",
-      "total, created_at",
-      "grand_total, created_at",
-      "amount, created_at",
-      "created_at",
-    ];
+    const projections = ["total_amount, created_at", "total, created_at", "created_at"];
 
     const result = await trySelect<any>(context, "transactions", projections, (q) =>
       q.gte("created_at", startDate.toISOString()).order("created_at", { ascending: true }),
     );
 
     if (result.error) {
-      logger.error({ err: result.error, context }, "Supabase error");
       res.status(500).json({ error: errorToMessage(result.error), context });
       return;
     }
 
-    // Group by day
     const revenueByDay: { [key: string]: number } = {};
     result.data?.forEach((transaction) => {
       const createdAt = pickFirst(transaction, ["created_at", "createdAt"]);
@@ -449,12 +415,7 @@ app.get("/api/dashboard/revenue-chart", async (req, res) => {
       revenueByDay[dateLabel] = (revenueByDay[dateLabel] || 0) + value;
     });
     
-    const chartData = Object.entries(revenueByDay).map(([date, revenue]) => ({
-      label: date,
-      revenue
-    }));
-    
-    res.json(chartData);
+    res.json(Object.entries(revenueByDay).map(([date, revenue]) => ({ label: date, revenue })));
   } catch (err) {
     respond500(res, "GET /api/dashboard/revenue-chart", err);
   }
@@ -463,63 +424,37 @@ app.get("/api/dashboard/revenue-chart", async (req, res) => {
 app.get("/api/dashboard/top-services", async (req, res) => {
   try {
     const context = "GET /api/dashboard/top-services";
-
-    // Your DB doesn't have transaction_items. Try to compute from transactions.items (jsonb)
-    const result = await trySelect<any>(
-      context,
-      "transactions",
-      ["items, created_at", "items"],
-      (q) => q.order("created_at", { ascending: false }).limit(200),
+    const result = await trySelect<any>(context, "transactions", ["items"], (q) =>
+      q.order("created_at", { ascending: false }).limit(200)
     );
 
     if (result.error) {
-      // Can't compute; return empty but not 500 so dashboard still works
-      logger.warn({ err: result.error, context }, "Cannot compute top services; returning empty list");
       res.json([]);
       return;
     }
 
-    const serviceStats: Record<
-      string,
-      { count: number; revenue: number; name: string; serviceId: number }
-    > = {};
+    const serviceStats: Record<string, { count: number; revenue: number; name: string; serviceId: string }> = {};
 
     for (const tx of result.data ?? []) {
       const items = (tx as any).items;
       if (!Array.isArray(items)) continue;
 
       for (const it of items) {
-        const serviceId = Number(pickFirst(it, ["serviceId", "service_id", "id"]) ?? 0);
+        const serviceId = String(pickFirst(it, ["serviceId", "service_id", "id"]) ?? "");
         if (!serviceId) continue;
-        const serviceName =
-          String(pickFirst(it, ["serviceName", "service_name", "name"]) ?? "Unknown");
+        const serviceName = String(pickFirst(it, ["serviceName", "service_name", "name"]) ?? "Unknown");
         const qty = Number(pickFirst(it, ["quantity", "qty"]) ?? 1);
-        const price = Number(
-          pickFirst(it, ["price", "service_price", "unitPrice", "unit_price"]) ?? 0,
-        );
-        const revenue = qty * price;
-
-        const key = String(serviceId);
-        if (!serviceStats[key]) {
-          serviceStats[key] = { serviceId, name: serviceName, count: 0, revenue: 0 };
+        const price = Number(pickFirst(it, ["price", "service_price", "unitPrice"]) ?? 0);
+        
+        if (!serviceStats[serviceId]) {
+          serviceStats[serviceId] = { serviceId, name: serviceName, count: 0, revenue: 0 };
         }
-
-        serviceStats[key].count += qty;
-        serviceStats[key].revenue += revenue;
+        serviceStats[serviceId].count += qty;
+        serviceStats[serviceId].revenue += (qty * price);
       }
     }
 
-    const topServices = Object.values(serviceStats)
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 5)
-      .map((s) => ({
-        serviceId: s.serviceId,
-        serviceName: s.name,
-        count: s.count,
-        revenue: s.revenue,
-      }));
-
-    res.json(topServices);
+    res.json(Object.values(serviceStats).sort((a, b) => b.revenue - a.revenue).slice(0, 5));
   } catch (err) {
     respond500(res, "GET /api/dashboard/top-services", err);
   }
