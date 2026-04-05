@@ -20,6 +20,9 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Logger
 const isProduction = process.env.NODE_ENV === "production";
+console.log("Starting API... Production:", isProduction);
+console.log("Supabase URL present:", !!process.env.SUPABASE_URL || !!process.env.VITE_SUPABASE_URL);
+
 const logger = pino({
   level: process.env.LOG_LEVEL ?? "info",
   redact: [
