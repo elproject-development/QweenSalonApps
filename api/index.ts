@@ -166,4 +166,86 @@ app.get("/api/dashboard/recent-transactions", async (req, res) => {
   }
 });
 
+app.get("/api/dashboard/revenue-chart", async (req, res) => {
+  try {
+    const period = req.query.period as string || "week";
+    const days = period === "week" ? 7 : period === "month" ? 30 : 1;
+    
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("total, created_at")
+      .gte("created_at", startDate.toISOString())
+      .order("created_at", { ascending: true });
+    
+    if (error) {
+      res.status(500).json({ error: error.message });
+      return;
+    }
+    
+    // Group by day
+    const revenueByDay: { [key: string]: number } = {};
+    data?.forEach(transaction => {
+      const date = new Date(transaction.created_at).toLocaleDateString();
+      revenueByDay[date] = (revenueByDay[date] || 0) + transaction.total;
+    });
+    
+    const chartData = Object.entries(revenueByDay).map(([date, revenue]) => ({
+      label: date,
+      revenue
+    }));
+    
+    res.json(chartData);
+  } catch (err) {
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.get("/api/dashboard/top-services", async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("transaction_items")
+      .select(`
+        service_id,
+        services!inner(name, price),
+        quantity
+      `);
+    
+    if (error) {
+      res.status(500).json({ error: error.message });
+      return;
+    }
+    
+    // Aggregate by service
+    const serviceStats: { [key: string]: { count: number; revenue: number; name: string } } = {};
+    data?.forEach(item => {
+      const serviceId = item.service_id;
+      const serviceName = (item.services as any)?.name || 'Unknown';
+      const revenue = item.quantity * ((item.services as any)?.price || 0);
+      
+      if (!serviceStats[serviceId]) {
+        serviceStats[serviceId] = { count: 0, revenue: 0, name: serviceName };
+      }
+      serviceStats[serviceId].count += item.quantity;
+      serviceStats[serviceId].revenue += revenue;
+    });
+    
+    const topServices = Object.entries(serviceStats)
+      .map(([serviceId, stats]) => ({
+        serviceId: parseInt(serviceId),
+        serviceName: stats.name,
+        count: stats.count,
+        revenue: stats.revenue
+      }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 5);
+    
+    res.json(topServices);
+  } catch (err) {
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 export default app;
