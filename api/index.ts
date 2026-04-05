@@ -251,12 +251,41 @@ app.get("/api/transactions", async (req, res) => {
       return;
     }
 
-    const transactions = (result.data ?? []).map((t: any) => ({
-      ...t,
-      total: Number(pickFirst(t, ["total_amount", "total", "grand_total", "amount"]) ?? 0),
-      receiptNumber: pickFirst(t, ["receipt_number", "receipt_no", "receipt", "invoice_number"]) ?? t.id,
-      customerName: pickFirst(t, ["customer_name", "customerName", "customer"]) ?? "",
-    }));
+    const customerIds = Array.from(
+      new Set(
+        (result.data ?? [])
+          .map((t) => pickFirst(t, ["customer_id", "customerId"]))
+          .filter(Boolean),
+      ),
+    );
+
+    let customerNameById = new Map<string, string>();
+    if (customerIds.length > 0) {
+      const { data: customers, error: customersError } = await supabase
+        .from("customers")
+        .select("id, name")
+        .in("id", customerIds);
+
+      if (!customersError) {
+        customerNameById = new Map(
+          (customers ?? []).map((c: any) => [String(c.id), String(c.name ?? "")]),
+        );
+      }
+    }
+
+    const transactions = (result.data ?? []).map((t: any) => {
+      const customerId = pickFirst(t, ["customer_id", "customerId"]);
+      return {
+        ...t,
+        total: Number(pickFirst(t, ["total_amount", "total", "grand_total", "amount"]) ?? 0),
+        receiptNumber:
+          pickFirst(t, ["receipt_number", "receipt_no", "receipt", "invoice_number"]) ?? t.id,
+        customerName:
+          pickFirst(t, ["customer_name", "customerName", "customer"]) ??
+          (customerId ? customerNameById.get(String(customerId)) : "") ??
+          "",
+      };
+    });
 
     res.json(transactions);
   } catch (err) {
