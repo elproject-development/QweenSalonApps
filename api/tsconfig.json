@@ -1,0 +1,13 @@
+{
+  "extends": "../tsconfig.json",
+  "include": ["./**/*"],
+  "exclude": ["../node_modules", "../dist"],
+  "compilerOptions": {
+    "noEmit": false,
+    "allowImportingTsExtensions": false,
+    "outDir": "../dist/api",
+    "types": ["node"],
+    "moduleResolution": "bundler",
+    "noImplicitAny": false
+  }
+}

@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Salon Kecantikan - Aplikasi Pembukuan"
+version = "1.0.0"
+id = "artifacts/salon-app"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22910
+
+[services.development]
+run = "pnpm --filter @workspace/salon-app run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/salon-app", "run", "build" ]
+publicDir = "artifacts/salon-app/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22910"
+BASE_PATH = "/"

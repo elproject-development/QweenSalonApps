@@ -1,0 +1,25 @@
+import { Router, type IRouter } from "express";
+import healthRouter from "./health";
+import customersRouter from "./customers-supabase";
+import servicesRouter from "./services-supabase";
+import staffRouter from "./staff-simple";
+import transactionsRouter from "./transactions-supabase";
+import expensesRouter from "./expenses-supabase";
+import appointmentsRouter from "./appointments-supabase";
+import dashboardRouter from "./dashboard-supabase";
+
+const router: IRouter = Router();
+
+router.use(healthRouter);
+router.get("/test", (req, res) => {
+  res.json({ message: "Routes are working!" });
+});
+router.use("/customers", customersRouter);
+router.use("/services", servicesRouter);
+router.use("/staff", staffRouter);
+router.use("/transactions", transactionsRouter);
+router.use("/expenses", expensesRouter);
+router.use("/appointments", appointmentsRouter);
+router.use(dashboardRouter);
+
+export default router;
