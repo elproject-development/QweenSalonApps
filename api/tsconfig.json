@@ -7,7 +7,11 @@
     "allowImportingTsExtensions": false,
     "outDir": "../dist/api",
     "types": ["node"],
-    "moduleResolution": "bundler",
-    "noImplicitAny": false
+    "moduleResolution": "node",
+    "noImplicitAny": false,
+    "target": "ES2022",
+    "module": "CommonJS",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true
   }
 }
