@@ -305,8 +305,21 @@ app.get("/api/services", async (req, res) => {
       .select("*")
       .order("name", { ascending: true });
     
-    // Note: category filtering would require joining with categories table
-    // For now, we skip category filtering since category_id is a foreign key
+    // Handle category filtering: convert category name to category_id
+    if (category && category !== "all" && typeof category === "string") {
+      const { data: categories } = await supabase
+        .from("categories")
+        .select("id")
+        .eq("name", category)
+        .limit(1);
+      
+      if (categories && categories.length > 0) {
+        query = query.eq("category_id", categories[0].id);
+      } else {
+        // If category not found, return empty array
+        return res.json([]);
+      }
+    }
     
     const { data, error } = await query;
     if (error) {
