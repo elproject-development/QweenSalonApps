@@ -222,7 +222,7 @@ export function Kasir() {
           <CardContent className="space-y-4">
             <div className="space-y-1.5">
               <Label className="text-xs">Pelanggan</Label>
-              <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId}>
+              <Select key={selectedCustomerId} value={selectedCustomerId} onValueChange={setSelectedCustomerId}>
                 <SelectTrigger className="h-9">
                   <SelectValue placeholder="Pilih pelanggan" />
                 </SelectTrigger>
