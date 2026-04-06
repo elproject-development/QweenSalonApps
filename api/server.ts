@@ -234,20 +234,23 @@ app.get("/api/appointments", async (req, res) => {
 
     let query = baseQuery;
 
+    // Filter by date range for timestamptz field
     if (date) {
-      query = query.eq("appointment_date", date);
+      const startOfDay = new Date(date);
+      const endOfDay = new Date(date);
+      startOfDay.setUTCHours(0, 0, 0, 0);
+      endOfDay.setUTCHours(23, 59, 59, 999);
+      
+      query = query
+        .gte("appointment_date", startOfDay.toISOString())
+        .lte("appointment_date", endOfDay.toISOString());
     }
+    
     if (status) {
       query = query.eq("status", status);
     }
 
-    let { data, error } = await query;
-    if (error && date && error.message.toLowerCase().includes("appointment_date")) {
-      const retryQuery = status ? baseQuery.eq("status", status).eq("date", date) : baseQuery.eq("date", date);
-      const retry = await retryQuery;
-      data = retry.data;
-      error = retry.error;
-    }
+    const { data, error } = await query;
 
     if (error) {
       logger.error({ err: error, context: "GET /api/appointments" }, "Supabase error");

@@ -77,7 +77,7 @@ export type Expense = {
 };
 
 export type Appointment = {
-  id: number;
+  id: string;
   customerName: string;
   customerPhone: string;
   serviceName: string;
@@ -304,13 +304,13 @@ export function useCreateAppointment() {
 
 export function useUpdateAppointment() {
   return useMutation({
-    mutationFn: ({ id, data }: { id: number; data: any }) => apiFetch<Appointment>(`/appointments/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+    mutationFn: ({ id, data }: { id: string; data: any }) => apiFetch<Appointment>(`/appointments/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   });
 }
 
 export function useDeleteAppointment() {
   return useMutation({
-    mutationFn: ({ id }: { id: number }) => apiFetch<void>(`/appointments/${id}`, { method: "DELETE" }),
+    mutationFn: ({ id }: { id: string }) => apiFetch<void>(`/appointments/${id}`, { method: "DELETE" }),
   });
 }
 

@@ -68,7 +68,7 @@ export function Janji() {
         data: {
           customerName: form.customerName,
           customerPhone: form.customerPhone,
-          serviceId: parseInt(form.serviceId),
+          serviceId: form.serviceId,
           staffId: form.staffId && form.staffId !== "anyone" ? form.staffId : null,
           scheduledAt,
           notes: form.notes || null,
@@ -83,7 +83,7 @@ export function Janji() {
     }
   };
 
-  const handleStatusUpdate = async (id: number, status: string) => {
+  const handleStatusUpdate = async (id: string, status: string) => {
     try {
       await updateAppointment.mutateAsync({ id, data: { status: status as "pending" | "confirmed" | "completed" | "cancelled" } });
       toast({ title: "Status diperbarui", variant: "success" });
@@ -93,7 +93,7 @@ export function Janji() {
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     try {
       await deleteAppointment.mutateAsync({ id });
       toast({ title: "Janji temu dihapus", variant: "success" });
@@ -254,7 +254,7 @@ export function Janji() {
                 </SelectTrigger>
                 <SelectContent>
                   {services?.filter(s => s.isActive).map(s => (
-                    <SelectItem key={s.id} value={String(s.id)}>
+                    <SelectItem key={s.id} value={s.id}>
                       {s.name} — {formatRupiah(s.price)}
                     </SelectItem>
                   ))}
@@ -270,7 +270,7 @@ export function Janji() {
                 <SelectContent>
                   <SelectItem value="anyone">Siapa saja</SelectItem>
                   {staff?.filter(s => s.isActive).map(s => (
-                    <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
