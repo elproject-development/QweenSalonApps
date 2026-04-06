@@ -812,7 +812,7 @@ app.post("/api/transactions", async (req, res) => {
     payload.items = normalizedItems;
     payload.subtotal = subtotalVal;
     payload.total_amount = totalVal;
-    if (!payload.payment_status) payload.payment_status = "completed";
+    if (!payload.payment_status) payload.payment_status = "paid";
     if (!payload.payment_method) payload.payment_method = "cash";
 
     // Remove undefined/null values only for optional fields (not total_amount or items)
