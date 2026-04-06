@@ -527,8 +527,12 @@ app.get("/api/expenses", async (req, res) => {
 
 app.post("/api/expenses", async (req, res) => {
   try {
-    const { date, ...payload } = req.body;
-    const { data, error } = await supabase.from("expenses").insert(payload).select();
+    const { date, expense_date, ...payload } = req.body;
+    const finalDate = expense_date || date || new Date().toISOString().slice(0, 10);
+    const { data, error } = await supabase
+      .from("expenses")
+      .insert({ ...payload, expense_date: finalDate })
+      .select();
     if (error) throw error;
     res.json(data?.[0]);
   } catch (err) {
@@ -538,10 +542,14 @@ app.post("/api/expenses", async (req, res) => {
 
 app.put("/api/expenses/:id", async (req, res) => {
   try {
-    const { date, ...payload } = req.body;
+    const { date, expense_date, ...payload } = req.body;
+    const updateData: any = { ...payload };
+    if (expense_date || date) {
+      updateData.expense_date = expense_date || date;
+    }
     const { data, error } = await supabase
       .from("expenses")
-      .update(payload)
+      .update(updateData)
       .eq("id", req.params.id)
       .select();
     if (error) throw error;
