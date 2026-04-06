@@ -509,17 +509,39 @@ app.delete("/api/transactions/:id", async (req, res) => {
 // Expenses routes
 app.get("/api/expenses", async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from("expenses")
-      .select("*")
-      .order("created_at", { ascending: false });
+    const { category, startDate, endDate } = req.query as {
+      category?: string;
+      startDate?: string;
+      endDate?: string;
+    };
+
+    let query = supabase.from("expenses").select("*").order("expense_date", { ascending: false });
+
+    if (category && category !== "all") {
+      query = query.eq("category", category);
+    }
+    if (startDate) {
+      query = query.gte("expense_date", startDate);
+    }
+    if (endDate) {
+      query = query.lte("expense_date", endDate);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       logger.error({ err: error, context: "GET /api/expenses" }, "Supabase error");
       res.status(500).json({ error: error.message, context: "GET /api/expenses" });
       return;
     }
-    res.json(data ?? []);
+
+    // Map expense_date to date for frontend compatibility if needed
+    const mappedData = (data ?? []).map((e: any) => ({
+      ...e,
+      date: e.expense_date || e.created_at,
+    }));
+
+    res.json(mappedData);
   } catch (err) {
     respond500(res, "GET /api/expenses", err);
   }
