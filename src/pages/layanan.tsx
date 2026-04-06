@@ -35,7 +35,7 @@ export function Layanan() {
   const { toast } = useToast();
   const [filterCategory, setFilterCategory] = useState<string>("");
   const [showDialog, setShowDialog] = useState(false);
-  const [editId, setEditId] = useState<number | null>(null);
+  const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<ServiceForm>(emptyForm());
 
   const { data: services, isLoading } = useListServices({ category: filterCategory === "all" ? undefined : filterCategory || undefined });

@@ -170,13 +170,13 @@ export function useCreateService() {
 
 export function useUpdateService() {
   return useMutation({
-    mutationFn: ({ id, data }: { id: number; data: any }) => apiFetch<SalonService>(`/services/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+    mutationFn: ({ id, data }: { id: string; data: any }) => apiFetch<SalonService>(`/services/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   });
 }
 
 export function useDeleteService() {
   return useMutation({
-    mutationFn: ({ id }: { id: number }) => apiFetch<void>(`/services/${id}`, { method: "DELETE" }),
+    mutationFn: ({ id }: { id: string }) => apiFetch<void>(`/services/${id}`, { method: "DELETE" }),
   });
 }
 

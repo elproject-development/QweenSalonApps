@@ -56,7 +56,7 @@ export function Kasir() {
     }
   };
 
-  const removeFromCart = (serviceId: number) => {
+  const removeFromCart = (serviceId: string) => {
     setCart(prev => {
       const existing = prev.find(item => item.service.id === serviceId);
       if (existing && existing.quantity > 1) {
@@ -66,10 +66,10 @@ export function Kasir() {
     });
   };
 
-  const selectedStaff = staffList?.find((s: any) => String(s.id) === String(selectedStaffId));
+  const selectedStaff = staffList?.find((s: any) => s.id === selectedStaffId);
   const selectedCustomer = selectedCustomerId === "general" 
     ? null 
-    : customers?.find((c: any) => String(c.id) === String(selectedCustomerId));
+    : customers?.find((c: any) => c.id === selectedCustomerId);
 
   const handleCheckout = () => {
     if (cart.length === 0) {
