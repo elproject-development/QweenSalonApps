@@ -636,16 +636,104 @@ app.get("/api/transactions", async (req, res) => {
       }
     }
 
+    const staffIds = Array.from(
+      new Set(
+        (result.data ?? [])
+          .map((t: any) => pickFirst(t, ["staff_id", "staffId"]))
+          .filter(Boolean)
+          .map((x: any) => String(x)),
+      ),
+    );
+
+    let staffNameById = new Map<string, string>();
+    if (staffIds.length > 0) {
+      const { data: staff, error: staffError } = await supabase
+        .from("staff")
+        .select("id, name")
+        .in("id", staffIds);
+
+      if (!staffError) {
+        staffNameById = new Map(
+          (staff ?? []).map((s: any) => [String(s.id), String(s.name ?? "")]),
+        );
+      }
+    }
+
+    const serviceIds = Array.from(
+      new Set(
+        (result.data ?? [])
+          .flatMap((t: any) => {
+            const items = pickFirst(t, ["items", "services", "transaction_items", "details"]) ?? [];
+            if (!Array.isArray(items)) return [];
+            return items
+              .map((it: any) => it?.serviceId ?? it?.service_id ?? it?.id ?? it?.service?.id)
+              .filter(Boolean)
+              .map((x: any) => String(x));
+          }),
+      ),
+    );
+
+    let serviceById = new Map<string, { name: string; price: number }>();
+    if (serviceIds.length > 0) {
+      const { data: services, error: servicesError } = await supabase
+        .from("services")
+        .select("id, name, price")
+        .in("id", serviceIds);
+
+      if (!servicesError) {
+        serviceById = new Map(
+          (services ?? []).map((s: any) => [String(s.id), { name: String(s.name ?? ""), price: Number(s.price ?? 0) }]),
+        );
+      }
+    }
+
     const transactions = (result.data ?? []).map((t: any) => {
       const customerId = pickFirst(t, ["customer_id", "customerId"]);
+      const staffId = pickFirst(t, ["staff_id", "staffId"]);
       const rawReceipt = pickFirst(t, ["receipt_number", "receipt_no", "receipt", "invoice_number"]);
+
+      const rawItems = pickFirst(t, ["items", "services", "transaction_items", "details"]) ?? [];
+      const itemsArr = Array.isArray(rawItems) ? rawItems : [];
+      const enrichedItems = itemsArr.map((it: any) => {
+        const sid = it?.serviceId ?? it?.service_id ?? it?.id ?? it?.service?.id;
+        const svc = sid ? serviceById.get(String(sid)) : undefined;
+        const quantity = Number(it?.quantity ?? it?.qty ?? 1) || 1;
+        const price = Number(it?.price ?? it?.amount ?? svc?.price ?? 0) || 0;
+        const serviceName = String(it?.serviceName ?? it?.service_name ?? svc?.name ?? it?.name ?? "");
+        const subtotal = Number(it?.subtotal ?? (price * quantity)) || 0;
+        return {
+          ...it,
+          serviceId: sid ?? it?.serviceId,
+          serviceName,
+          quantity,
+          price,
+          subtotal,
+        };
+      });
+
+      const subtotalVal = Number(pickFirst(t, ["subtotal", "sub_total"]) ?? 0) || enrichedItems.reduce((acc: number, it: any) => acc + (Number(it?.subtotal ?? 0) || 0), 0);
+      const discountVal = Number(pickFirst(t, ["discount"]) ?? 0) || 0;
+      const taxVal = Number(pickFirst(t, ["tax"]) ?? 0) || 0;
+      const totalVal = Number(pickFirst(t, ["total_amount", "total", "grand_total", "amount"]) ?? (subtotalVal - discountVal + taxVal)) || 0;
+
       return {
         ...t,
-        total: Number(pickFirst(t, ["total_amount", "total", "grand_total", "amount"]) ?? 0),
+        createdAt: pickFirst(t, ["createdAt", "created_at"]) ?? null,
+        paymentMethod: pickFirst(t, ["paymentMethod", "payment_method"]) ?? "cash",
+        status: pickFirst(t, ["status", "payment_status", "paymentStatus"]) ?? "completed",
+        subtotal: subtotalVal,
+        discount: discountVal,
+        tax: taxVal,
+        total: totalVal,
+        items: enrichedItems,
         receiptNumber: rawReceipt || `INV-${String(t.id).slice(0, 8).toUpperCase()}`,
         customerName:
           pickFirst(t, ["customer_name", "customerName", "customer"]) ??
           (customerId ? customerNameById.get(String(customerId)) : "") ??
+          "",
+        staffName:
+          pickFirst(t, ["staff_name", "staffName"]) ??
+          (staffId ? staffNameById.get(String(staffId)) : "") ??
           "",
       };
     });
