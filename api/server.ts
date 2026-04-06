@@ -684,7 +684,15 @@ app.post("/api/transactions", async (req, res) => {
     if (error) throw error;
     
     const row = data?.[0];
-    res.json(row);
+    
+    // Generate receipt number from transaction id
+    const receiptNumber = `INV-${String(row.id).slice(0, 8).toUpperCase()}`;
+    
+    res.json({
+      ...row,
+      receiptNumber,
+      createdAt: row.created_at,
+    });
   } catch (err) {
     respond500(res, "POST /api/transactions", err);
   }
