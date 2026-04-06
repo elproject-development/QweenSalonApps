@@ -33,7 +33,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export type SalonService = {
-  id: number;
+  id: string;
   name: string;
   category: string;
   price: number;
