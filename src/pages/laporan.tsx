@@ -21,7 +21,8 @@ export function Laporan() {
   const [chartPeriod, setChartPeriod] = useState<"week" | "month" | "year">("month");
 
   const { data: summary, isLoading: loadingSummary } = useGetDashboardSummary({ period });
-  const { data: chartData, isLoading: loadingChart } = useGetRevenueChart({ period: chartPeriod });
+  const chartQueryPeriod = chartPeriod === "month" ? "year" : chartPeriod;
+  const { data: chartData, isLoading: loadingChart } = useGetRevenueChart({ period: chartQueryPeriod });
   const { data: topServicesAllTime, isLoading: loadingTopAllTime } = useGetTopServices();
   const { data: customers, isLoading: loadingCustomers } = useListCustomers();
   const { data: transactions, isLoading: loadingTransactions } = useListTransactions();
@@ -134,7 +135,7 @@ export function Laporan() {
     if (label == null) return "";
     const s = String(label);
 
-    if (chartPeriod === "year") {
+    if (chartPeriod === "year" || chartPeriod === "month") {
       const m1 = s.match(/^\d{4}-(\d{2})$/);
       if (m1) {
         const idx = Number(m1[1]) - 1;
