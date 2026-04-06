@@ -263,15 +263,51 @@ app.get("/api/appointments", async (req, res) => {
 
 app.post("/api/appointments", async (req, res) => {
   try {
+    const body = req.body || {};
     const payload: any = {
-      customer_name: req.body.customerName,
-      customer_phone: req.body.customerPhone,
-      service_name: req.body.serviceName,
-      staff_name: req.body.staffName,
-      status: req.body.status || "pending",
-      scheduled_at: req.body.scheduledAt,
-      notes: req.body.notes,
+      customer_id: body.customerId || body.customer_id,
+      staff_id: body.staffId || body.staff_id,
+      service_id: body.serviceId || body.service_id,
+      appointment_date: body.scheduledAt || body.appointment_date || body.scheduled_at,
+      status: body.status || "pending",
+      notes: body.notes,
     };
+
+    // If customerName is provided instead of customerId, look up customer by name
+    if (!payload.customer_id && body.customerName) {
+      const { data: customers } = await supabase
+        .from("customers")
+        .select("id")
+        .eq("name", body.customerName)
+        .limit(1);
+      if (customers && customers.length > 0) {
+        payload.customer_id = customers[0].id;
+      }
+    }
+
+    // If staffName is provided instead of staffId, look up staff by name
+    if (!payload.staff_id && body.staffName) {
+      const { data: staff } = await supabase
+        .from("staff")
+        .select("id")
+        .eq("name", body.staffName)
+        .limit(1);
+      if (staff && staff.length > 0) {
+        payload.staff_id = staff[0].id;
+      }
+    }
+
+    // If serviceName is provided instead of serviceId, look up service by name
+    if (!payload.service_id && body.serviceName) {
+      const { data: services } = await supabase
+        .from("services")
+        .select("id")
+        .eq("name", body.serviceName)
+        .limit(1);
+      if (services && services.length > 0) {
+        payload.service_id = services[0].id;
+      }
+    }
 
     // Remove undefined/null values
     Object.keys(payload).forEach(key => {
@@ -290,14 +326,50 @@ app.post("/api/appointments", async (req, res) => {
 
 app.put("/api/appointments/:id", async (req, res) => {
   try {
+    const body = req.body || {};
     const payload: any = {};
-    if (req.body.customerName !== undefined) payload.customer_name = req.body.customerName;
-    if (req.body.customerPhone !== undefined) payload.customer_phone = req.body.customerPhone;
-    if (req.body.serviceName !== undefined) payload.service_name = req.body.serviceName;
-    if (req.body.staffName !== undefined) payload.staff_name = req.body.staffName;
-    if (req.body.status !== undefined) payload.status = req.body.status;
-    if (req.body.scheduledAt !== undefined) payload.scheduled_at = req.body.scheduledAt;
-    if (req.body.notes !== undefined) payload.notes = req.body.notes;
+    if (body.customerId !== undefined || body.customer_id !== undefined) payload.customer_id = body.customerId || body.customer_id;
+    if (body.staffId !== undefined || body.staff_id !== undefined) payload.staff_id = body.staffId || body.staff_id;
+    if (body.serviceId !== undefined || body.service_id !== undefined) payload.service_id = body.serviceId || body.service_id;
+    if (body.scheduledAt !== undefined || body.appointment_date !== undefined || body.scheduled_at !== undefined) payload.appointment_date = body.scheduledAt || body.appointment_date || body.scheduled_at;
+    if (body.status !== undefined) payload.status = body.status;
+    if (body.notes !== undefined) payload.notes = body.notes;
+
+    // If customerName is provided, look up customer by name
+    if (!payload.customer_id && body.customerName) {
+      const { data: customers } = await supabase
+        .from("customers")
+        .select("id")
+        .eq("name", body.customerName)
+        .limit(1);
+      if (customers && customers.length > 0) {
+        payload.customer_id = customers[0].id;
+      }
+    }
+
+    // If staffName is provided, look up staff by name
+    if (!payload.staff_id && body.staffName) {
+      const { data: staff } = await supabase
+        .from("staff")
+        .select("id")
+        .eq("name", body.staffName)
+        .limit(1);
+      if (staff && staff.length > 0) {
+        payload.staff_id = staff[0].id;
+      }
+    }
+
+    // If serviceName is provided, look up service by name
+    if (!payload.service_id && body.serviceName) {
+      const { data: services } = await supabase
+        .from("services")
+        .select("id")
+        .eq("name", body.serviceName)
+        .limit(1);
+      if (services && services.length > 0) {
+        payload.service_id = services[0].id;
+      }
+    }
 
     const { data, error } = await supabase
       .from("appointments")
