@@ -187,6 +187,41 @@ app.get("/api/customers", async (req, res) => {
   }
 });
 
+app.post("/api/customers", async (req, res) => {
+  try {
+    const { data, error } = await supabase.from("customers").insert(req.body).select().single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    respond500(res, "POST /api/customers", err);
+  }
+});
+
+app.put("/api/customers/:id", async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("customers")
+      .update(req.body)
+      .eq("id", req.params.id)
+      .select()
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    respond500(res, "PUT /api/customers", err);
+  }
+});
+
+app.delete("/api/customers/:id", async (req, res) => {
+  try {
+    const { error } = await supabase.from("customers").delete().eq("id", req.params.id);
+    if (error) throw error;
+    res.status(204).send();
+  } catch (err) {
+    respond500(res, "DELETE /api/customers", err);
+  }
+});
+
 // Appointments routes
 app.get("/api/appointments", async (req, res) => {
   try {
@@ -226,6 +261,41 @@ app.get("/api/appointments", async (req, res) => {
   }
 });
 
+app.post("/api/appointments", async (req, res) => {
+  try {
+    const { data, error } = await supabase.from("appointments").insert(req.body).select().single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    respond500(res, "POST /api/appointments", err);
+  }
+});
+
+app.put("/api/appointments/:id", async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("appointments")
+      .update(req.body)
+      .eq("id", req.params.id)
+      .select()
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    respond500(res, "PUT /api/appointments", err);
+  }
+});
+
+app.delete("/api/appointments/:id", async (req, res) => {
+  try {
+    const { error } = await supabase.from("appointments").delete().eq("id", req.params.id);
+    if (error) throw error;
+    res.status(204).send();
+  } catch (err) {
+    respond500(res, "DELETE /api/appointments", err);
+  }
+});
+
 // Services routes
 app.get("/api/services", async (req, res) => {
   try {
@@ -251,6 +321,41 @@ app.get("/api/services", async (req, res) => {
   }
 });
 
+app.post("/api/services", async (req, res) => {
+  try {
+    const { data, error } = await supabase.from("services").insert(req.body).select().single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    respond500(res, "POST /api/services", err);
+  }
+});
+
+app.put("/api/services/:id", async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("services")
+      .update(req.body)
+      .eq("id", req.params.id)
+      .select()
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    respond500(res, "PUT /api/services", err);
+  }
+});
+
+app.delete("/api/services/:id", async (req, res) => {
+  try {
+    const { error } = await supabase.from("services").delete().eq("id", req.params.id);
+    if (error) throw error;
+    res.status(204).send();
+  } catch (err) {
+    respond500(res, "DELETE /api/services", err);
+  }
+});
+
 // Staff routes
 app.get("/api/staff", async (req, res) => {
   try {
@@ -267,6 +372,41 @@ app.get("/api/staff", async (req, res) => {
     res.json(data);
   } catch (err) {
     respond500(res, "GET /api/staff", err);
+  }
+});
+
+app.post("/api/staff", async (req, res) => {
+  try {
+    const { data, error } = await supabase.from("staff").insert(req.body).select().single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    respond500(res, "POST /api/staff", err);
+  }
+});
+
+app.put("/api/staff/:id", async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("staff")
+      .update(req.body)
+      .eq("id", req.params.id)
+      .select()
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    respond500(res, "PUT /api/staff", err);
+  }
+});
+
+app.delete("/api/staff/:id", async (req, res) => {
+  try {
+    const { error } = await supabase.from("staff").delete().eq("id", req.params.id);
+    if (error) throw error;
+    res.status(204).send();
+  } catch (err) {
+    respond500(res, "DELETE /api/staff", err);
   }
 });
 
@@ -331,6 +471,41 @@ app.get("/api/transactions", async (req, res) => {
   }
 });
 
+app.post("/api/transactions", async (req, res) => {
+  try {
+    const { data, error } = await supabase.from("transactions").insert(req.body).select().single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    respond500(res, "POST /api/transactions", err);
+  }
+});
+
+app.put("/api/transactions/:id", async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("transactions")
+      .update(req.body)
+      .eq("id", req.params.id)
+      .select()
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    respond500(res, "PUT /api/transactions", err);
+  }
+});
+
+app.delete("/api/transactions/:id", async (req, res) => {
+  try {
+    const { error } = await supabase.from("transactions").delete().eq("id", req.params.id);
+    if (error) throw error;
+    res.status(204).send();
+  } catch (err) {
+    respond500(res, "DELETE /api/transactions", err);
+  }
+});
+
 // Expenses routes
 app.get("/api/expenses", async (req, res) => {
   try {
@@ -347,6 +522,41 @@ app.get("/api/expenses", async (req, res) => {
     res.json(data ?? []);
   } catch (err) {
     respond500(res, "GET /api/expenses", err);
+  }
+});
+
+app.post("/api/expenses", async (req, res) => {
+  try {
+    const { data, error } = await supabase.from("expenses").insert(req.body).select().single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    respond500(res, "POST /api/expenses", err);
+  }
+});
+
+app.put("/api/expenses/:id", async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("expenses")
+      .update(req.body)
+      .eq("id", req.params.id)
+      .select()
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    respond500(res, "PUT /api/expenses", err);
+  }
+});
+
+app.delete("/api/expenses/:id", async (req, res) => {
+  try {
+    const { error } = await supabase.from("expenses").delete().eq("id", req.params.id);
+    if (error) throw error;
+    res.status(204).send();
+  } catch (err) {
+    respond500(res, "DELETE /api/expenses", err);
   }
 });
 
