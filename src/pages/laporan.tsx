@@ -129,6 +129,27 @@ export function Laporan() {
 
   const formatTooltipValue = (value: number) => formatRupiah(value);
 
+  const monthLabels = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+  const formatXAxisLabel = (label: any) => {
+    if (label == null) return "";
+    const s = String(label);
+
+    if (chartPeriod === "year") {
+      const m1 = s.match(/^\d{4}-(\d{2})$/);
+      if (m1) {
+        const idx = Number(m1[1]) - 1;
+        return monthLabels[idx] ?? s;
+      }
+
+      const n = Number(s);
+      if (!Number.isNaN(n) && n >= 1 && n <= 12) {
+        return monthLabels[n - 1] ?? s;
+      }
+    }
+
+    return s;
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
@@ -264,6 +285,7 @@ export function Laporan() {
                   tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
                   axisLine={false}
                   tickLine={false}
+                  tickFormatter={formatXAxisLabel}
                 />
                 <YAxis 
                   hide={isMobile} 
