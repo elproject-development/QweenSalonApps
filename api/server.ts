@@ -341,11 +341,24 @@ app.post("/api/appointments", async (req, res) => {
     if (!payload.customer_id && body.customerName) {
       const { data: customers } = await supabase
         .from("customers")
-        .select("id")
+        .select("id, phone")
         .eq("name", body.customerName)
         .limit(1);
       if (customers && customers.length > 0) {
         payload.customer_id = customers[0].id;
+      } else {
+        // Create new customer if not exists
+        const { data: newCustomer } = await supabase
+          .from("customers")
+          .insert({ 
+            name: body.customerName, 
+            phone: body.customerPhone || "" 
+          })
+          .select()
+          .single();
+        if (newCustomer) {
+          payload.customer_id = newCustomer.id;
+        }
       }
     }
 
