@@ -730,24 +730,38 @@ app.get("/api/dashboard/recent-transactions", async (req, res) => {
 app.get("/api/dashboard/revenue-chart", async (req, res) => {
   try {
     const period = (req.query.period as string) || "week";
-    const days = period === "week" ? 7 : period === "month" ? 30 : period === "year" ? 365 : 7;
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
+    const endDate = new Date();
+    const startDate = new Date(endDate);
+    if (period === "week") {
+      startDate.setDate(endDate.getDate() - 6);
+      startDate.setHours(0, 0, 0, 0);
+    } else if (period === "month") {
+      startDate.setDate(endDate.getDate() - 29);
+      startDate.setHours(0, 0, 0, 0);
+    } else if (period === "year") {
+      startDate.setMonth(endDate.getMonth() - 11);
+      startDate.setDate(1);
+      startDate.setHours(0, 0, 0, 0);
+    } else {
+      startDate.setDate(endDate.getDate() - 6);
+      startDate.setHours(0, 0, 0, 0);
+    }
 
     const context = "GET /api/dashboard/revenue-chart";
 
-    const labelForDate = (d: Date) => {
-      if (period === "year") {
-        return d.toLocaleString(undefined, { month: "short" });
-      }
-      return d.toLocaleDateString();
-    };
+    const isoDate = (d: Date) => d.toISOString().slice(0, 10);
+    const monthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const monthLabel = (d: Date) => d.toLocaleString(undefined, { month: "short" });
 
     const txResult = await trySelect<any>(
       context,
       "transactions",
       ["total_amount, created_at", "total, created_at", "grand_total, created_at", "amount, created_at", "created_at"],
-      (q) => q.gte("created_at", startDate.toISOString()).order("created_at", { ascending: true }),
+      (q) =>
+        q
+          .gte("created_at", startDate.toISOString())
+          .lte("created_at", endDate.toISOString())
+          .order("created_at", { ascending: true }),
     );
 
     if (txResult.error) {
@@ -758,40 +772,59 @@ app.get("/api/dashboard/revenue-chart", async (req, res) => {
     const { data: expensesData, error: expensesError } = await supabase
       .from("expenses")
       .select("amount, expense_date, created_at")
-      .gte("expense_date", startDate.toISOString().slice(0, 10))
+      .gte("expense_date", isoDate(startDate))
+      .lte("expense_date", isoDate(endDate))
       .order("expense_date", { ascending: true });
 
     if (expensesError) {
       logger.warn({ err: expensesError, context }, "Failed to load expenses for revenue chart; defaulting to 0");
     }
 
-    const buckets: Record<string, { revenue: number; expenses: number }> = {};
+    const buckets: Array<{ key: string; label: string; revenue: number; expenses: number }> = [];
+
+    if (period === "year") {
+      const cursor = new Date(startDate);
+      cursor.setDate(1);
+      cursor.setHours(0, 0, 0, 0);
+      while (cursor <= endDate) {
+        buckets.push({ key: monthKey(cursor), label: monthLabel(cursor), revenue: 0, expenses: 0 });
+        cursor.setMonth(cursor.getMonth() + 1);
+      }
+    } else {
+      const cursor = new Date(startDate);
+      cursor.setHours(0, 0, 0, 0);
+      while (cursor <= endDate) {
+        const key = isoDate(cursor);
+        buckets.push({ key, label: cursor.toLocaleDateString(), revenue: 0, expenses: 0 });
+        cursor.setDate(cursor.getDate() + 1);
+      }
+    }
+
+    const bucketByKey = new Map(buckets.map((b) => [b.key, b] as const));
 
     (txResult.data ?? []).forEach((tx) => {
       const createdAt = pickFirst(tx, ["created_at", "createdAt"]);
-      const d = createdAt ? new Date(createdAt) : null;
-      const label = d ? labelForDate(d) : "Unknown";
+      if (!createdAt) return;
+      const d = new Date(createdAt);
+      const key = period === "year" ? monthKey(d) : isoDate(d);
+      const b = bucketByKey.get(key);
+      if (!b) return;
       const value = Number(pickFirst(tx, ["total_amount", "total", "grand_total", "amount"]) ?? 0);
-      buckets[label] = buckets[label] || { revenue: 0, expenses: 0 };
-      buckets[label].revenue += value;
+      b.revenue += value;
     });
 
     (expensesData ?? []).forEach((ex: any) => {
       const raw = ex?.expense_date || ex?.created_at;
-      const d = raw ? new Date(raw) : null;
-      const label = d ? labelForDate(d) : "Unknown";
+      if (!raw) return;
+      const d = new Date(raw);
+      const key = period === "year" ? monthKey(d) : isoDate(d);
+      const b = bucketByKey.get(key);
+      if (!b) return;
       const value = Number(ex?.amount ?? 0);
-      buckets[label] = buckets[label] || { revenue: 0, expenses: 0 };
-      buckets[label].expenses += value;
+      b.expenses += value;
     });
 
-    const chartData = Object.entries(buckets).map(([label, v]) => ({
-      label,
-      revenue: v.revenue,
-      expenses: v.expenses,
-    }));
-
-    res.json(chartData);
+    res.json(buckets.map(({ label, revenue, expenses }) => ({ label, revenue, expenses })));
   } catch (err) {
     respond500(res, "GET /api/dashboard/revenue-chart", err);
   }
