@@ -137,13 +137,51 @@ app.get("/api/customers", async (req, res) => {
       query = query.ilike("name", `%${search}%`);
     }
     
-    const { data, error } = await query;
-    if (error) {
-      logger.error({ err: error, context: "GET /api/customers" }, "Supabase error");
-      res.status(500).json({ error: error.message, context: "GET /api/customers" });
+    const { data: customers, error: customersError } = await query;
+    if (customersError) {
+      logger.error({ err: customersError, context: "GET /api/customers" }, "Supabase error");
+      res.status(500).json({ error: customersError.message, context: "GET /api/customers" });
       return;
     }
-    res.json(data);
+
+    if (!customers || customers.length === 0) {
+      res.json([]);
+      return;
+    }
+
+    // Fetch transaction stats for these customers
+    const customerIds = customers.map((c) => c.id);
+    const { data: transactions, error: transError } = await supabase
+      .from("transactions")
+      .select("customer_id, total_amount")
+      .in("customer_id", customerIds);
+
+    if (transError) {
+      logger.warn({ err: transError }, "Failed to fetch transactions for customer stats");
+    }
+
+    // Aggregate stats
+    const statsMap = new Map<string, { visits: number; totalSpend: number }>();
+    (transactions ?? []).forEach((t) => {
+      if (!t.customer_id) return;
+      const cid = String(t.customer_id);
+      const current = statsMap.get(cid) || { visits: 0, totalSpend: 0 };
+      statsMap.set(cid, {
+        visits: current.visits + 1,
+        totalSpend: current.totalSpend + Number(t.total_amount || 0),
+      });
+    });
+
+    const enrichedCustomers = customers.map((c) => {
+      const stats = statsMap.get(String(c.id)) || { visits: 0, totalSpend: 0 };
+      return {
+        ...c,
+        visitCount: stats.visits,
+        totalSpend: stats.totalSpend,
+      };
+    });
+
+    res.json(enrichedCustomers);
   } catch (err) {
     respond500(res, "GET /api/customers", err);
   }
