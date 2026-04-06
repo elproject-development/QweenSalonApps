@@ -763,6 +763,58 @@ app.post("/api/transactions", async (req, res) => {
       staff_id: body.staffId || body.staff_id,
     };
 
+    const itemsArr = Array.isArray(payload.items) ? payload.items : [];
+    const serviceIds = Array.from(
+      new Set(
+        itemsArr
+          .map((it: any) => it?.serviceId ?? it?.service_id ?? it?.id ?? it?.service?.id)
+          .filter(Boolean)
+          .map((x: any) => String(x)),
+      ),
+    );
+
+    let priceByServiceId = new Map<string, number>();
+    if (serviceIds.length > 0) {
+      const { data: services, error: servicesError } = await supabase
+        .from("services")
+        .select("id, price")
+        .in("id", serviceIds);
+
+      if (servicesError) throw servicesError;
+
+      priceByServiceId = new Map(
+        (services ?? []).map((s: any) => [String(s.id), Number(s.price ?? 0)]),
+      );
+    }
+
+    const normalizedItems = itemsArr.map((it: any) => {
+      const serviceId = it?.serviceId ?? it?.service_id ?? it?.id ?? it?.service?.id;
+      const quantity = Number(it?.quantity ?? it?.qty ?? 1) || 1;
+      return {
+        ...it,
+        serviceId,
+        quantity,
+      };
+    });
+
+    const computedSubtotal = normalizedItems.reduce((acc: number, it: any) => {
+      const sid = it?.serviceId ? String(it.serviceId) : "";
+      const price = sid ? (priceByServiceId.get(sid) ?? 0) : 0;
+      const qty = Number(it?.quantity ?? 1) || 1;
+      return acc + price * qty;
+    }, 0);
+
+    const discountVal = Number(payload.discount ?? 0) || 0;
+    const taxVal = Number(payload.tax ?? 0) || 0;
+    const subtotalVal = (Number(payload.subtotal ?? 0) || 0) > 0 ? Number(payload.subtotal) : computedSubtotal;
+    const totalVal = subtotalVal - discountVal + taxVal;
+
+    payload.items = normalizedItems;
+    payload.subtotal = subtotalVal;
+    payload.total_amount = totalVal;
+    if (!payload.payment_status) payload.payment_status = "completed";
+    if (!payload.payment_method) payload.payment_method = "cash";
+
     // Remove undefined/null values only for optional fields (not total_amount or items)
     Object.keys(payload).forEach(key => {
       if (key !== 'total_amount' && key !== 'items' && (payload[key] === undefined || payload[key] === null)) {
