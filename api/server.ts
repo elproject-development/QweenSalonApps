@@ -1411,7 +1411,8 @@ app.get("/api/dashboard/top-services", async (req, res) => {
       return;
     }
 
-    const serviceStats: Record<string, { count: number; revenue: number; name: string; serviceId: string }> = {};
+    const serviceStats: Record<string, { count: number; revenue: number }> = {};
+    const serviceIds: string[] = [];
 
     for (const tx of result.data ?? []) {
       const items = (tx as any).items;
@@ -1420,27 +1421,60 @@ app.get("/api/dashboard/top-services", async (req, res) => {
       for (const it of items) {
         const serviceId = String(pickFirst(it, ["serviceId", "service_id", "id"]) ?? "");
         if (!serviceId) continue;
-        const serviceName = String(pickFirst(it, ["serviceName", "service_name", "name"]) ?? "Unknown");
-        const qty = Number(pickFirst(it, ["quantity", "qty"]) ?? 1);
-        const price = Number(pickFirst(it, ["price", "service_price", "unitPrice"]) ?? 0);
-        
+
+        const qty = Number(pickFirst(it, ["quantity", "qty"]) ?? 1) || 1;
+        const itemSubtotal = Number(pickFirst(it, ["subtotal"]) ?? 0) || 0;
+        const itemPrice = Number(pickFirst(it, ["price", "service_price", "unitPrice"]) ?? 0) || 0;
+
         if (!serviceStats[serviceId]) {
-          serviceStats[serviceId] = { serviceId, name: serviceName, count: 0, revenue: 0 };
+          serviceStats[serviceId] = { count: 0, revenue: 0 };
+          serviceIds.push(serviceId);
         }
+
         serviceStats[serviceId].count += qty;
-        serviceStats[serviceId].revenue += (qty * price);
+        // Prefer stored subtotal, then item price, and finally fallback to service price lookup.
+        if (itemSubtotal > 0) {
+          serviceStats[serviceId].revenue += itemSubtotal;
+        } else if (itemPrice > 0) {
+          serviceStats[serviceId].revenue += qty * itemPrice;
+        }
       }
     }
 
-    const topServices = Object.values(serviceStats)
+    let serviceById = new Map<string, { name: string; price: number }>();
+    if (serviceIds.length > 0) {
+      const { data: services, error: servicesError } = await supabase
+        .from("services")
+        .select("id, name, price")
+        .in("id", serviceIds);
+
+      if (servicesError) throw servicesError;
+
+      serviceById = new Map(
+        (services ?? []).map((s: any) => [String(s.id), { name: String(s.name ?? ""), price: Number(s.price ?? 0) }]),
+      );
+    }
+
+    // Fill remaining revenue gaps (old transactions with no item subtotal/price)
+    for (const sid of Object.keys(serviceStats)) {
+      if (serviceStats[sid].revenue > 0) continue;
+      const svc = serviceById.get(String(sid));
+      if (!svc) continue;
+      serviceStats[sid].revenue = serviceStats[sid].count * (svc.price || 0);
+    }
+
+    const topServices = Object.keys(serviceStats)
+      .map((sid) => {
+        const svc = serviceById.get(String(sid));
+        return {
+          serviceId: sid,
+          serviceName: svc?.name || "Unknown",
+          count: serviceStats[sid].count,
+          revenue: serviceStats[sid].revenue,
+        };
+      })
       .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 5)
-      .map(service => ({
-        serviceId: service.serviceId,
-        serviceName: service.name,
-        count: service.count,
-        revenue: service.revenue
-      }));
+      .slice(0, 5);
 
     res.json(topServices);
   } catch (err) {
