@@ -527,9 +527,9 @@ app.get("/api/expenses", async (req, res) => {
 
 app.post("/api/expenses", async (req, res) => {
   try {
-    const { data, error } = await supabase.from("expenses").insert(req.body).select().single();
+    const { data, error } = await supabase.from("expenses").insert(req.body).select();
     if (error) throw error;
-    res.json(data);
+    res.json(data?.[0]);
   } catch (err) {
     respond500(res, "POST /api/expenses", err);
   }
@@ -541,10 +541,9 @@ app.put("/api/expenses/:id", async (req, res) => {
       .from("expenses")
       .update(req.body)
       .eq("id", req.params.id)
-      .select()
-      .single();
+      .select();
     if (error) throw error;
-    res.json(data);
+    res.json(data?.[0]);
   } catch (err) {
     respond500(res, "PUT /api/expenses", err);
   }
