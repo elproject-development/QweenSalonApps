@@ -311,10 +311,10 @@ app.get("/api/appointments", async (req, res) => {
 
       return {
         ...a,
-        customerName: customer?.name ?? "",
-        customerPhone: customer?.phone ?? "",
-        staffName: staff ?? "",
-        serviceName: service ?? "",
+        customerName: customer?.name || "Tidak diketahui",
+        customerPhone: customer?.phone || "Tidak ada",
+        staffName: staff || null,
+        serviceName: service || "Tidak diketahui",
         scheduledAt: a.appointment_date,
       };
     });
