@@ -19,6 +19,7 @@ const PAYMENT_LABEL: Record<string, string> = {
   cash: "Tunai",
   transfer: "Transfer Bank",
   qris: "QRIS",
+  ewallet: "E-Wallet",
   debit: "Kartu Debit",
   credit: "Kartu Kredit",
 };

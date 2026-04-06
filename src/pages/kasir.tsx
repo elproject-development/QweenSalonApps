@@ -26,7 +26,7 @@ export function Kasir() {
   const [cart, setCart] = useState<{ service: SalonService; quantity: number }[]>([]);
   const [discount, setDiscount] = useState<string>("");
   const [tax, setTax] = useState<string>("");
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "transfer" | "qris" | "debit" | "credit">("cash");
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "transfer" | "qris" | "ewallet" | "debit" | "credit">("cash");
   const [printData, setPrintData] = useState<ReceiptData | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [showServiceList, setShowServiceList] = useState(false);
@@ -315,7 +315,7 @@ export function Kasir() {
                   <SelectItem value="cash">Tunai</SelectItem>
                   <SelectItem value="transfer">Transfer Bank</SelectItem>
                   <SelectItem value="qris">QRIS</SelectItem>
-                  <SelectItem value="debit">E-Wallet</SelectItem>
+                  <SelectItem value="ewallet">E-Wallet</SelectItem>
                   
                 </SelectContent>
               </Select>
