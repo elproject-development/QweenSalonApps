@@ -69,7 +69,7 @@ export function Kasir() {
   const selectedStaff = staffList?.find((s: any) => String(s.id) === String(selectedStaffId));
   const selectedCustomer = selectedCustomerId === "general" 
     ? null 
-    : customers?.find((c: any) => c.id === Number(selectedCustomerId));
+    : customers?.find((c: any) => String(c.id) === String(selectedCustomerId));
 
   const handleCheckout = () => {
     if (cart.length === 0) {
@@ -87,8 +87,8 @@ export function Kasir() {
     createTransaction.mutate(
       {
         data: {
-          customerId: selectedCustomerId === "general" ? undefined : Number(selectedCustomerId),
-          staffId: selectedStaffId === "none" ? undefined : Number(selectedStaffId),
+          customerId: selectedCustomerId === "general" ? undefined : selectedCustomerId,
+          staffId: selectedStaffId === "none" ? undefined : selectedStaffId,
           items: cart.map(item => ({ serviceId: item.service.id, quantity: item.quantity })),
           discount: parseNumber(discount),
           tax: parseNumber(tax),

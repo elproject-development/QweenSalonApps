@@ -658,19 +658,21 @@ app.get("/api/transactions", async (req, res) => {
 
 app.post("/api/transactions", async (req, res) => {
   try {
+    const body = (req as any).body?.data ?? (req as any).body ?? {};
+
     // Whitelist based on Supabase transactions schema
     const payload: any = {
-      customer_id: req.body.customerId || req.body.customer_id,
-      appointment_id: req.body.appointmentId || req.body.appointment_id,
-      items: req.body.items || [],
-      total_amount: req.body.totalAmount || req.body.total_amount || req.body.total || 0,
-      payment_method: req.body.paymentMethod || req.body.payment_method,
-      payment_status: req.body.paymentStatus || req.body.payment_status,
-      notes: req.body.notes,
-      discount: req.body.discount ? Number(req.body.discount) : 0,
-      tax: req.body.tax ? Number(req.body.tax) : 0,
-      subtotal: req.body.subtotal ? Number(req.body.subtotal) : 0,
-      staff_id: req.body.staffId || req.body.staff_id,
+      customer_id: body.customerId || body.customer_id,
+      appointment_id: body.appointmentId || body.appointment_id,
+      items: body.items || [],
+      total_amount: body.totalAmount || body.total_amount || body.total || 0,
+      payment_method: body.paymentMethod || body.payment_method,
+      payment_status: body.paymentStatus || body.payment_status,
+      notes: body.notes,
+      discount: body.discount ? Number(body.discount) : 0,
+      tax: body.tax ? Number(body.tax) : 0,
+      subtotal: body.subtotal ? Number(body.subtotal) : 0,
+      staff_id: body.staffId || body.staff_id,
     };
 
     // Remove undefined/null values only for optional fields (not total_amount or items)
