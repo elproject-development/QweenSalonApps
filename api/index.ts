@@ -729,34 +729,69 @@ app.get("/api/dashboard/recent-transactions", async (req, res) => {
 
 app.get("/api/dashboard/revenue-chart", async (req, res) => {
   try {
-    const period = req.query.period as string || "week";
-    const days = period === "week" ? 7 : period === "month" ? 30 : 1;
+    const period = (req.query.period as string) || "week";
+    const days = period === "week" ? 7 : period === "month" ? 30 : period === "year" ? 365 : 7;
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
-    
-    const context = "GET /api/dashboard/revenue-chart";
-    const projections = ["total_amount, created_at", "total, created_at", "created_at"];
 
-    const result = await trySelect<any>(context, "transactions", projections, (q) =>
-      q.gte("created_at", startDate.toISOString()).order("created_at", { ascending: true }),
+    const context = "GET /api/dashboard/revenue-chart";
+
+    const labelForDate = (d: Date) => {
+      if (period === "year") {
+        return d.toLocaleString(undefined, { month: "short" });
+      }
+      return d.toLocaleDateString();
+    };
+
+    const txResult = await trySelect<any>(
+      context,
+      "transactions",
+      ["total_amount, created_at", "total, created_at", "grand_total, created_at", "amount, created_at", "created_at"],
+      (q) => q.gte("created_at", startDate.toISOString()).order("created_at", { ascending: true }),
     );
 
-    if (result.error) {
-      res.status(500).json({ error: errorToMessage(result.error), context });
+    if (txResult.error) {
+      res.status(500).json({ error: errorToMessage(txResult.error), context });
       return;
     }
 
-    const revenueByDay: { [key: string]: number } = {};
-    result.data?.forEach((transaction) => {
-      const createdAt = pickFirst(transaction, ["created_at", "createdAt"]);
-      const dateLabel = createdAt ? new Date(createdAt).toLocaleDateString() : "Unknown";
-      const value = Number(
-        pickFirst(transaction, ["total_amount", "total", "grand_total", "amount"]) ?? 0,
-      );
-      revenueByDay[dateLabel] = (revenueByDay[dateLabel] || 0) + value;
+    const { data: expensesData, error: expensesError } = await supabase
+      .from("expenses")
+      .select("amount, expense_date, created_at")
+      .gte("expense_date", startDate.toISOString().slice(0, 10))
+      .order("expense_date", { ascending: true });
+
+    if (expensesError) {
+      logger.warn({ err: expensesError, context }, "Failed to load expenses for revenue chart; defaulting to 0");
+    }
+
+    const buckets: Record<string, { revenue: number; expenses: number }> = {};
+
+    (txResult.data ?? []).forEach((tx) => {
+      const createdAt = pickFirst(tx, ["created_at", "createdAt"]);
+      const d = createdAt ? new Date(createdAt) : null;
+      const label = d ? labelForDate(d) : "Unknown";
+      const value = Number(pickFirst(tx, ["total_amount", "total", "grand_total", "amount"]) ?? 0);
+      buckets[label] = buckets[label] || { revenue: 0, expenses: 0 };
+      buckets[label].revenue += value;
     });
-    
-    res.json(Object.entries(revenueByDay).map(([date, revenue]) => ({ label: date, revenue })));
+
+    (expensesData ?? []).forEach((ex: any) => {
+      const raw = ex?.expense_date || ex?.created_at;
+      const d = raw ? new Date(raw) : null;
+      const label = d ? labelForDate(d) : "Unknown";
+      const value = Number(ex?.amount ?? 0);
+      buckets[label] = buckets[label] || { revenue: 0, expenses: 0 };
+      buckets[label].expenses += value;
+    });
+
+    const chartData = Object.entries(buckets).map(([label, v]) => ({
+      label,
+      revenue: v.revenue,
+      expenses: v.expenses,
+    }));
+
+    res.json(chartData);
   } catch (err) {
     respond500(res, "GET /api/dashboard/revenue-chart", err);
   }
