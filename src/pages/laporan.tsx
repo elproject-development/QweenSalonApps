@@ -77,9 +77,7 @@ export function Laporan() {
   const computedRevenue = (transactions ?? []).filter((tx: any) => {
     const d = safeParseDate(tx?.createdAt ?? tx?.created_at ?? tx?.date);
     if (!d) return false;
-    const status = String(tx?.status ?? tx?.payment_status ?? tx?.paymentStatus ?? "").toLowerCase();
-    const isCompleted = status === "completed" || status === "selesai" || status === "paid" || status === "success" || status === "success_paid";
-    return isCompleted && isWithinInterval(d, periodRange);
+    return isWithinInterval(d, periodRange);
   }).reduce((acc: number, tx: any) => acc + (Number(tx?.total ?? tx?.total_amount ?? tx?.amount ?? 0) || 0), 0);
 
   const expensesValue = summary?.expenses ?? computedExpenses;
@@ -89,9 +87,7 @@ export function Laporan() {
   const filteredTransactionsForTop = (transactions ?? []).filter((tx: any) => {
     const d = safeParseDate(tx?.createdAt ?? tx?.created_at ?? tx?.date);
     if (!d) return false;
-    const status = String(tx?.status ?? tx?.payment_status ?? tx?.paymentStatus ?? "").toLowerCase();
-    const isCompleted = status === "completed" || status === "selesai" || status === "paid" || status === "success" || status === "success_paid";
-    return isCompleted && isWithinInterval(d, periodRange);
+    return isWithinInterval(d, periodRange);
   });
 
   const serviceMap = new Map<string, { count: number; revenue: number; name: string }>();
