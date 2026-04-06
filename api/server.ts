@@ -305,7 +305,7 @@ app.get("/api/services", async (req, res) => {
       .select("*")
       .order("name", { ascending: true });
     
-    if (category) {
+    if (category && category !== "all") {
       query = query.eq("category", category);
     }
     
@@ -315,7 +315,14 @@ app.get("/api/services", async (req, res) => {
       res.status(500).json({ error: error.message, context: "GET /api/services" });
       return;
     }
-    res.json(data);
+    
+    // Map is_active to isActive for frontend compatibility
+    const mapped = (data ?? []).map((s: any) => ({
+      ...s,
+      isActive: s.is_active ?? s.isActive ?? true,
+    }));
+    
+    res.json(mapped);
   } catch (err) {
     respond500(res, "GET /api/services", err);
   }
@@ -323,9 +330,19 @@ app.get("/api/services", async (req, res) => {
 
 app.post("/api/services", async (req, res) => {
   try {
-    const { data, error } = await supabase.from("services").insert(req.body).select().single();
+    const { isActive, is_active, ...rest } = req.body ?? {};
+    const payload: any = { ...rest };
+    if (isActive !== undefined) payload.is_active = isActive;
+    if (is_active !== undefined) payload.is_active = is_active;
+
+    const { data, error } = await supabase.from("services").insert(payload).select();
     if (error) throw error;
-    res.json(data);
+    
+    const row = data?.[0];
+    res.json({
+      ...row,
+      isActive: row.is_active ?? row.isActive ?? true,
+    });
   } catch (err) {
     respond500(res, "POST /api/services", err);
   }
@@ -333,14 +350,23 @@ app.post("/api/services", async (req, res) => {
 
 app.put("/api/services/:id", async (req, res) => {
   try {
+    const { isActive, is_active, ...rest } = req.body ?? {};
+    const payload: any = { ...rest };
+    if (isActive !== undefined) payload.is_active = isActive;
+    if (is_active !== undefined) payload.is_active = is_active;
+
     const { data, error } = await supabase
       .from("services")
-      .update(req.body)
+      .update(payload)
       .eq("id", req.params.id)
-      .select()
-      .single();
+      .select();
     if (error) throw error;
-    res.json(data);
+    
+    const row = data?.[0];
+    res.json({
+      ...row,
+      isActive: row.is_active ?? row.isActive ?? true,
+    });
   } catch (err) {
     respond500(res, "PUT /api/services", err);
   }
