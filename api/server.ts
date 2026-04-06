@@ -662,8 +662,8 @@ app.post("/api/transactions", async (req, res) => {
     const payload: any = {
       customer_id: req.body.customerId || req.body.customer_id,
       appointment_id: req.body.appointmentId || req.body.appointment_id,
-      items: req.body.items,
-      total_amount: req.body.totalAmount || req.body.total_amount || req.body.total,
+      items: req.body.items || [],
+      total_amount: req.body.totalAmount || req.body.total_amount || req.body.total || 0,
       payment_method: req.body.paymentMethod || req.body.payment_method,
       payment_status: req.body.paymentStatus || req.body.payment_status,
       notes: req.body.notes,
@@ -673,9 +673,9 @@ app.post("/api/transactions", async (req, res) => {
       staff_id: req.body.staffId || req.body.staff_id,
     };
 
-    // Remove undefined/null values
+    // Remove undefined/null values only for optional fields (not total_amount or items)
     Object.keys(payload).forEach(key => {
-      if (payload[key] === undefined || payload[key] === null) {
+      if (key !== 'total_amount' && key !== 'items' && (payload[key] === undefined || payload[key] === null)) {
         delete payload[key];
       }
     });
