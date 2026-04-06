@@ -230,7 +230,7 @@ app.get("/api/appointments", async (req, res) => {
     const baseQuery = supabase
       .from("appointments")
       .select("*")
-      .order("created_at", { ascending: false });
+      .order("appointment_date", { ascending: false });
 
     let query = baseQuery;
 
@@ -255,7 +255,68 @@ app.get("/api/appointments", async (req, res) => {
       return;
     }
 
-    res.json(data ?? []);
+    // Enrich appointments with customer, staff, and service names
+    const customerIds = Array.from(
+      new Set((data ?? []).map((a: any) => a.customer_id).filter(Boolean)),
+    );
+    const staffIds = Array.from(
+      new Set((data ?? []).map((a: any) => a.staff_id).filter(Boolean)),
+    );
+    const serviceIds = Array.from(
+      new Set((data ?? []).map((a: any) => a.service_id).filter(Boolean)),
+    );
+
+    let customerById = new Map<string, { name: string; phone: string }>();
+    if (customerIds.length > 0) {
+      const { data: customers } = await supabase
+        .from("customers")
+        .select("id, name, phone")
+        .in("id", customerIds);
+      if (customers) {
+        customerById = new Map(
+          customers.map((c: any) => [String(c.id), { name: String(c.name ?? ""), phone: String(c.phone ?? "") }]),
+        );
+      }
+    }
+
+    let staffById = new Map<string, string>();
+    if (staffIds.length > 0) {
+      const { data: staff } = await supabase
+        .from("staff")
+        .select("id, name")
+        .in("id", staffIds);
+      if (staff) {
+        staffById = new Map(staff.map((s: any) => [String(s.id), String(s.name ?? "")]));
+      }
+    }
+
+    let serviceById = new Map<string, string>();
+    if (serviceIds.length > 0) {
+      const { data: services } = await supabase
+        .from("services")
+        .select("id, name")
+        .in("id", serviceIds);
+      if (services) {
+        serviceById = new Map(services.map((s: any) => [String(s.id), String(s.name ?? "")]));
+      }
+    }
+
+    const enriched = (data ?? []).map((a: any) => {
+      const customer = a.customer_id ? customerById.get(String(a.customer_id)) : null;
+      const staff = a.staff_id ? staffById.get(String(a.staff_id)) : null;
+      const service = a.service_id ? serviceById.get(String(a.service_id)) : null;
+
+      return {
+        ...a,
+        customerName: customer?.name ?? "",
+        customerPhone: customer?.phone ?? "",
+        staffName: staff ?? "",
+        serviceName: service ?? "",
+        scheduledAt: a.appointment_date,
+      };
+    });
+
+    res.json(enriched);
   } catch (err) {
     respond500(res, "GET /api/appointments", err);
   }
