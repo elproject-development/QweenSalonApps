@@ -356,7 +356,17 @@ app.delete("/api/services/:id", async (req, res) => {
   }
 });
 
-// Staff routes
+// Staff routes helpers - v6-schema-sync deployed
+async function getCleanStaffRow(row: any) {
+  if (!row) return null;
+  return {
+    ...row,
+    // Map database specialization back to position for frontend
+    position: row.specialization ?? "",
+    isActive: row.is_active ?? true,
+  };
+}
+
 app.get("/api/staff", async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -369,10 +379,7 @@ app.get("/api/staff", async (req, res) => {
       res.status(500).json({ error: error.message, context: "GET /api/staff" });
       return;
     }
-    const mapped = (data ?? []).map((s: any) => ({
-      ...s,
-      isActive: pickFirst(s, ["isActive", "is_active"]) ?? true,
-    }));
+    const mapped = await Promise.all((data ?? []).map(getCleanStaffRow));
     res.json(mapped);
   } catch (err) {
     respond500(res, "GET /api/staff", err);
@@ -381,25 +388,31 @@ app.get("/api/staff", async (req, res) => {
 
 app.post("/api/staff", async (req, res) => {
   try {
-    logger.info({ body: req.body, context: "POST /api/staff" }, "Request received");
-    const { isActive, is_active, ...rest } = req.body ?? {};
-    const payload: any = { ...rest };
-    if (isActive !== undefined) payload.is_active = isActive;
-    if (is_active !== undefined) payload.is_active = is_active;
+    const v = "v6-schema-sync";
+    logger.info({ body: req.body, context: "POST /api/staff", v }, "Request received");
+    
+    // Whitelist based on provided Supabase schema
+    const payload: any = {
+      name: req.body.name,
+      phone: req.body.phone,
+      email: req.body.email,
+      // Map frontend 'position' to database 'specialization'
+      specialization: req.body.specialization ?? req.body.position,
+      commission: req.body.commission ? Number(req.body.commission) : 0,
+      is_active: req.body.is_active ?? req.body.isActive ?? true
+    };
 
-    logger.info({ payload, context: "POST /api/staff" }, "Sending to Supabase");
+    logger.info({ payload, context: "POST /api/staff", v }, "Final payload for Supabase");
+
     const { data, error } = await supabase.from("staff").insert(payload).select();
     
     if (error) {
-      logger.error({ err: error, payload, context: "POST /api/staff" }, "Supabase insert error");
+      logger.error({ err: error, payload, context: "POST /api/staff", v }, "Supabase error");
       throw error;
     }
     
-    const row = data?.[0];
-    res.json({
-      ...row,
-      isActive: pickFirst(row, ["isActive", "is_active"]) ?? true,
-    });
+    const row = await getCleanStaffRow(data?.[0]);
+    res.json(row);
   } catch (err) {
     respond500(res, "POST /api/staff", err);
   }
@@ -407,13 +420,24 @@ app.post("/api/staff", async (req, res) => {
 
 app.put("/api/staff/:id", async (req, res) => {
   try {
-    logger.info({ id: req.params.id, body: req.body, context: "PUT /api/staff" }, "Request received");
-    const { isActive, is_active, ...rest } = req.body ?? {};
-    const payload: any = { ...rest };
-    if (isActive !== undefined) payload.is_active = isActive;
-    if (is_active !== undefined) payload.is_active = is_active;
+    const v = "v6-schema-sync";
+    logger.info({ id: req.params.id, body: req.body, context: "PUT /api/staff", v }, "Request received");
+    
+    const payload: any = {};
+    if (req.body.name !== undefined) payload.name = req.body.name;
+    if (req.body.phone !== undefined) payload.phone = req.body.phone;
+    if (req.body.email !== undefined) payload.email = req.body.email;
+    if (req.body.commission !== undefined) payload.commission = Number(req.body.commission);
+    
+    // Handle position/specialization mapping
+    if (req.body.specialization !== undefined) payload.specialization = req.body.specialization;
+    else if (req.body.position !== undefined) payload.specialization = req.body.position;
 
-    logger.info({ id: req.params.id, payload, context: "PUT /api/staff" }, "Sending to Supabase");
+    const activeVal = req.body.is_active ?? req.body.isActive;
+    if (activeVal !== undefined) payload.is_active = !!activeVal;
+
+    logger.info({ id: req.params.id, payload, context: "PUT /api/staff", v }, "Final payload for Supabase");
+
     const { data, error } = await supabase
       .from("staff")
       .update(payload)
@@ -421,15 +445,12 @@ app.put("/api/staff/:id", async (req, res) => {
       .select();
       
     if (error) {
-      logger.error({ err: error, id: req.params.id, payload, context: "PUT /api/staff" }, "Supabase update error");
+      logger.error({ err: error, id: req.params.id, payload, context: "PUT /api/staff", v }, "Supabase error");
       throw error;
     }
     
-    const row = data?.[0];
-    res.json({
-      ...row,
-      isActive: pickFirst(row, ["isActive", "is_active"]) ?? true,
-    });
+    const row = await getCleanStaffRow(data?.[0]);
+    res.json(row);
   } catch (err) {
     respond500(res, "PUT /api/staff", err);
   }
