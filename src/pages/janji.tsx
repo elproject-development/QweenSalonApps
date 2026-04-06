@@ -69,7 +69,7 @@ export function Janji() {
           customerName: form.customerName,
           customerPhone: form.customerPhone,
           serviceId: parseInt(form.serviceId),
-          staffId: form.staffId && form.staffId !== "anyone" ? parseInt(form.staffId) : null,
+          staffId: form.staffId && form.staffId !== "anyone" ? form.staffId : null,
           scheduledAt,
           notes: form.notes || null,
         },

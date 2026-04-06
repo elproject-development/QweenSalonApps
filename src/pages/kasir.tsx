@@ -66,7 +66,7 @@ export function Kasir() {
     });
   };
 
-  const selectedStaff = staffList?.find((s: any) => s.id === Number(selectedStaffId));
+  const selectedStaff = staffList?.find((s: any) => String(s.id) === String(selectedStaffId));
   const selectedCustomer = customers?.find((c: any) => c.id === Number(selectedCustomerId));
 
   const handleCheckout = () => {

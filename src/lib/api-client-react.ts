@@ -57,7 +57,7 @@ export type Customer = {
 };
 
 export type Staff = {
-  id: number;
+  id: string;
   name: string;
   phone: string;
   position: string;
@@ -233,13 +233,13 @@ export function useCreateStaff() {
 
 export function useUpdateStaff() {
   return useMutation({
-    mutationFn: ({ id, data }: { id: number; data: any }) => apiFetch<Staff>(`/staff/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+    mutationFn: ({ id, data }: { id: string; data: any }) => apiFetch<Staff>(`/staff/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   });
 }
 
 export function useDeleteStaff() {
   return useMutation({
-    mutationFn: ({ id }: { id: number }) => apiFetch<void>(`/staff/${id}`, { method: "DELETE" }),
+    mutationFn: ({ id }: { id: string }) => apiFetch<void>(`/staff/${id}`, { method: "DELETE" }),
   });
 }
 

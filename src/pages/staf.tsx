@@ -28,7 +28,7 @@ export function Staf() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [showDialog, setShowDialog] = useState(false);
-  const [editId, setEditId] = useState<number | null>(null);
+  const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<StaffForm>(emptyForm());
 
   const { data: staff, isLoading } = useListStaff();
@@ -71,7 +71,7 @@ export function Staf() {
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     try {
       await deleteStaff.mutateAsync({ id });
       toast({ title: "Staf dihapus", variant: "success" });

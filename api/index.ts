@@ -369,7 +369,11 @@ app.get("/api/staff", async (req, res) => {
       res.status(500).json({ error: error.message, context: "GET /api/staff" });
       return;
     }
-    res.json(data);
+    const mapped = (data ?? []).map((s: any) => ({
+      ...s,
+      isActive: pickFirst(s, ["isActive", "is_active"]) ?? true,
+    }));
+    res.json(mapped);
   } catch (err) {
     respond500(res, "GET /api/staff", err);
   }
@@ -377,9 +381,18 @@ app.get("/api/staff", async (req, res) => {
 
 app.post("/api/staff", async (req, res) => {
   try {
-    const { data, error } = await supabase.from("staff").insert(req.body).select().single();
+    const { isActive, is_active, ...rest } = req.body ?? {};
+    const payload: any = { ...rest };
+    if (isActive !== undefined) payload.is_active = isActive;
+    if (is_active !== undefined) payload.is_active = is_active;
+
+    const { data, error } = await supabase.from("staff").insert(payload).select();
     if (error) throw error;
-    res.json(data);
+    const row = data?.[0];
+    res.json({
+      ...row,
+      isActive: pickFirst(row, ["isActive", "is_active"]) ?? true,
+    });
   } catch (err) {
     respond500(res, "POST /api/staff", err);
   }
@@ -387,14 +400,22 @@ app.post("/api/staff", async (req, res) => {
 
 app.put("/api/staff/:id", async (req, res) => {
   try {
+    const { isActive, is_active, ...rest } = req.body ?? {};
+    const payload: any = { ...rest };
+    if (isActive !== undefined) payload.is_active = isActive;
+    if (is_active !== undefined) payload.is_active = is_active;
+
     const { data, error } = await supabase
       .from("staff")
-      .update(req.body)
+      .update(payload)
       .eq("id", req.params.id)
-      .select()
-      .single();
+      .select();
     if (error) throw error;
-    res.json(data);
+    const row = data?.[0];
+    res.json({
+      ...row,
+      isActive: pickFirst(row, ["isActive", "is_active"]) ?? true,
+    });
   } catch (err) {
     respond500(res, "PUT /api/staff", err);
   }
