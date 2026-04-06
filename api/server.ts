@@ -1364,7 +1364,11 @@ app.get("/api/dashboard/revenue-chart", async (req, res) => {
       cursor.setHours(0, 0, 0, 0);
       while (cursor <= endDate) {
         const key = isoDate(cursor);
-        buckets.push({ key, label: cursor.toLocaleDateString(), revenue: 0, expenses: 0 });
+        const label =
+          period === "week"
+            ? cursor.toLocaleDateString("id-ID", { weekday: "short" })
+            : cursor.toLocaleDateString("id-ID", { day: "2-digit", month: "2-digit" });
+        buckets.push({ key, label, revenue: 0, expenses: 0 });
         cursor.setDate(cursor.getDate() + 1);
       }
     }
