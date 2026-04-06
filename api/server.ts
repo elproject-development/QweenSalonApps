@@ -948,10 +948,11 @@ app.post("/api/transactions", async (req, res) => {
     );
 
     let priceByServiceId = new Map<string, number>();
+    let serviceById = new Map<string, { name: string; price: number }>();
     if (serviceIds.length > 0) {
       const { data: services, error: servicesError } = await supabase
         .from("services")
-        .select("id, price")
+        .select("id, name, price")
         .in("id", serviceIds);
 
       if (servicesError) throw servicesError;
@@ -959,15 +960,23 @@ app.post("/api/transactions", async (req, res) => {
       priceByServiceId = new Map(
         (services ?? []).map((s: any) => [String(s.id), Number(s.price ?? 0)]),
       );
+      
+      serviceById = new Map(
+        (services ?? []).map((s: any) => [String(s.id), { name: String(s.name ?? ""), price: Number(s.price ?? 0) }]),
+      );
     }
 
     const normalizedItems = itemsArr.map((it: any) => {
       const serviceId = it?.serviceId ?? it?.service_id ?? it?.id ?? it?.service?.id;
       const quantity = Number(it?.quantity ?? it?.qty ?? 1) || 1;
+      const service = serviceId ? serviceById.get(String(serviceId)) : null;
+      
       return {
-        ...it,
         serviceId,
         quantity,
+        price: service?.price || 0,
+        serviceName: service?.name || "Unknown",
+        subtotal: (service?.price || 0) * quantity,
       };
     });
 
