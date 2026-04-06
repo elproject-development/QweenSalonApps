@@ -92,7 +92,7 @@ export function Layanan() {
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     try {
       await deleteService.mutateAsync({ id });
       toast({ title: "Layanan dihapus", variant: "success" });
