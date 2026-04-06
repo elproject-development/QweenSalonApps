@@ -658,9 +658,33 @@ app.get("/api/transactions", async (req, res) => {
 
 app.post("/api/transactions", async (req, res) => {
   try {
-    const { data, error } = await supabase.from("transactions").insert(req.body).select().single();
+    // Whitelist based on Supabase transactions schema
+    const payload: any = {
+      customer_id: req.body.customerId || req.body.customer_id,
+      appointment_id: req.body.appointmentId || req.body.appointment_id,
+      items: req.body.items,
+      total_amount: req.body.totalAmount || req.body.total_amount || req.body.total,
+      payment_method: req.body.paymentMethod || req.body.payment_method,
+      payment_status: req.body.paymentStatus || req.body.payment_status,
+      notes: req.body.notes,
+      discount: req.body.discount ? Number(req.body.discount) : 0,
+      tax: req.body.tax ? Number(req.body.tax) : 0,
+      subtotal: req.body.subtotal ? Number(req.body.subtotal) : 0,
+      staff_id: req.body.staffId || req.body.staff_id,
+    };
+
+    // Remove undefined/null values
+    Object.keys(payload).forEach(key => {
+      if (payload[key] === undefined || payload[key] === null) {
+        delete payload[key];
+      }
+    });
+
+    const { data, error } = await supabase.from("transactions").insert(payload).select();
     if (error) throw error;
-    res.json(data);
+    
+    const row = data?.[0];
+    res.json(row);
   } catch (err) {
     respond500(res, "POST /api/transactions", err);
   }
@@ -668,14 +692,41 @@ app.post("/api/transactions", async (req, res) => {
 
 app.put("/api/transactions/:id", async (req, res) => {
   try {
+    // Whitelist based on Supabase transactions schema
+    const payload: any = {};
+    if (req.body.customerId !== undefined || req.body.customer_id !== undefined) {
+      payload.customer_id = req.body.customerId || req.body.customer_id;
+    }
+    if (req.body.appointmentId !== undefined || req.body.appointment_id !== undefined) {
+      payload.appointment_id = req.body.appointmentId || req.body.appointment_id;
+    }
+    if (req.body.items !== undefined) payload.items = req.body.items;
+    if (req.body.totalAmount !== undefined || req.body.total_amount !== undefined || req.body.total !== undefined) {
+      payload.total_amount = Number(req.body.totalAmount || req.body.total_amount || req.body.total);
+    }
+    if (req.body.paymentMethod !== undefined || req.body.payment_method !== undefined) {
+      payload.payment_method = req.body.paymentMethod || req.body.payment_method;
+    }
+    if (req.body.paymentStatus !== undefined || req.body.payment_status !== undefined) {
+      payload.payment_status = req.body.paymentStatus || req.body.payment_status;
+    }
+    if (req.body.notes !== undefined) payload.notes = req.body.notes;
+    if (req.body.discount !== undefined) payload.discount = Number(req.body.discount);
+    if (req.body.tax !== undefined) payload.tax = Number(req.body.tax);
+    if (req.body.subtotal !== undefined) payload.subtotal = Number(req.body.subtotal);
+    if (req.body.staffId !== undefined || req.body.staff_id !== undefined) {
+      payload.staff_id = req.body.staffId || req.body.staff_id;
+    }
+
     const { data, error } = await supabase
       .from("transactions")
-      .update(req.body)
+      .update(payload)
       .eq("id", req.params.id)
-      .select()
-      .single();
+      .select();
     if (error) throw error;
-    res.json(data);
+    
+    const row = data?.[0];
+    res.json(row);
   } catch (err) {
     respond500(res, "PUT /api/transactions", err);
   }
