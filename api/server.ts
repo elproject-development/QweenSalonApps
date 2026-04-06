@@ -912,7 +912,48 @@ app.get("/api/transactions", async (req, res) => {
       };
     });
 
-    res.json(transactions);
+    // Override receiptNumber with sequential TRXDDMMNNNN (Asia/Jakarta) for consistent ordering
+    const jktParts = (d: Date) => {
+      const fmt = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Asia/Jakarta",
+        day: "2-digit",
+        month: "2-digit",
+      });
+      const parts = fmt.formatToParts(d);
+      const dd = parts.find((p) => p.type === "day")?.value ?? "00";
+      const mm = parts.find((p) => p.type === "month")?.value ?? "00";
+      return { dd, mm };
+    };
+
+    const txAsc = [...transactions].sort((a: any, b: any) => {
+      const ta = new Date(a?.createdAt ?? 0).getTime();
+      const tb = new Date(b?.createdAt ?? 0).getTime();
+      if (ta !== tb) return ta - tb;
+      return String(a?.id ?? "").localeCompare(String(b?.id ?? ""));
+    });
+
+    const receiptById = new Map<string, string>();
+    const seqByDay = new Map<string, number>();
+
+    for (const t of txAsc) {
+      const createdAt = t?.createdAt;
+      if (!createdAt) continue;
+      const d = new Date(createdAt);
+      if (isNaN(d.getTime())) continue;
+      const { dd, mm } = jktParts(d);
+      const dayKey = `${dd}${mm}`;
+      const next = (seqByDay.get(dayKey) ?? 0) + 1;
+      seqByDay.set(dayKey, next);
+      const seq = String(next).padStart(4, "0");
+      receiptById.set(String(t.id), `TRX${dayKey}${seq}`);
+    }
+
+    const transactionsWithSeq = transactions.map((t: any) => ({
+      ...t,
+      receiptNumber: receiptById.get(String(t.id)) ?? t.receiptNumber,
+    }));
+
+    res.json(transactionsWithSeq);
   } catch (err) {
     respond500(res, "GET /api/transactions", err);
   }
@@ -1009,9 +1050,38 @@ app.post("/api/transactions", async (req, res) => {
     if (error) throw error;
     
     const row = data?.[0];
-    
-    // Generate receipt number from transaction id
-    const receiptNumber = `INV-${String(row.id).slice(0, 8).toUpperCase()}`;
+
+    // Generate sequential receipt number TRXDDMMNNNN (Asia/Jakarta) based on this day's transactions
+    const createdAtIso = row?.created_at;
+    const createdAtDate = createdAtIso ? new Date(createdAtIso) : new Date();
+    const jktFmt = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Jakarta",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    const parts = jktFmt.formatToParts(createdAtDate);
+    const dd = parts.find((p) => p.type === "day")?.value ?? "00";
+    const mm = parts.find((p) => p.type === "month")?.value ?? "00";
+    const yyyy = parts.find((p) => p.type === "year")?.value ?? String(createdAtDate.getUTCFullYear());
+
+    // Build UTC range that corresponds to Asia/Jakarta day boundaries for querying
+    const startJkt = new Date(`${yyyy}-${mm}-${dd}T00:00:00+07:00`);
+    const endJkt = new Date(`${yyyy}-${mm}-${dd}T23:59:59.999+07:00`);
+
+    let receiptNumber = `TRX${dd}${mm}0001`;
+    const { data: dayTx, error: dayTxError } = await supabase
+      .from("transactions")
+      .select("id, created_at")
+      .gte("created_at", startJkt.toISOString())
+      .lte("created_at", endJkt.toISOString())
+      .order("created_at", { ascending: true });
+
+    if (!dayTxError && Array.isArray(dayTx) && dayTx.length > 0) {
+      const idx = dayTx.findIndex((t: any) => String(t.id) === String(row.id));
+      const seqNum = (idx >= 0 ? idx + 1 : dayTx.length);
+      receiptNumber = `TRX${dd}${mm}${String(seqNum).padStart(4, "0")}`;
+    }
     
     res.json({
       ...row,
