@@ -34,7 +34,7 @@ function HistorySheet({
   onClose,
   allTransactions 
 }: { 
-  customerId: string; 
+  customerId: number; 
   customerName: string;
   customerPhone: string;
   open: boolean; 
@@ -115,9 +115,9 @@ export function Pelanggan() {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [showDialog, setShowDialog] = useState(false);
-  const [editId, setEditId] = useState<string | null>(null);
+  const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState<CustomerFormData>(emptyForm());
-  const [activeCustomer, setActiveCustomer] = useState<{id: string, name: string, phone: string} | null>(null);
+  const [activeCustomer, setActiveCustomer] = useState<{id: number, name: string, phone: string} | null>(null);
 
   const { data: customers, isLoading: loadingCustomers } = useListCustomers({ search: search || undefined });
   const { data: allTransactions } = useListTransactions();
@@ -163,7 +163,7 @@ export function Pelanggan() {
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: number) => {
     try {
       await deleteCustomer.mutateAsync({ id });
       toast({ title: "Pelanggan dihapus", variant: "success" });
