@@ -381,13 +381,20 @@ app.get("/api/staff", async (req, res) => {
 
 app.post("/api/staff", async (req, res) => {
   try {
+    logger.info({ body: req.body, context: "POST /api/staff" }, "Request received");
     const { isActive, is_active, ...rest } = req.body ?? {};
     const payload: any = { ...rest };
     if (isActive !== undefined) payload.is_active = isActive;
     if (is_active !== undefined) payload.is_active = is_active;
 
+    logger.info({ payload, context: "POST /api/staff" }, "Sending to Supabase");
     const { data, error } = await supabase.from("staff").insert(payload).select();
-    if (error) throw error;
+    
+    if (error) {
+      logger.error({ err: error, payload, context: "POST /api/staff" }, "Supabase insert error");
+      throw error;
+    }
+    
     const row = data?.[0];
     res.json({
       ...row,
@@ -400,17 +407,24 @@ app.post("/api/staff", async (req, res) => {
 
 app.put("/api/staff/:id", async (req, res) => {
   try {
+    logger.info({ id: req.params.id, body: req.body, context: "PUT /api/staff" }, "Request received");
     const { isActive, is_active, ...rest } = req.body ?? {};
     const payload: any = { ...rest };
     if (isActive !== undefined) payload.is_active = isActive;
     if (is_active !== undefined) payload.is_active = is_active;
 
+    logger.info({ id: req.params.id, payload, context: "PUT /api/staff" }, "Sending to Supabase");
     const { data, error } = await supabase
       .from("staff")
       .update(payload)
       .eq("id", req.params.id)
       .select();
-    if (error) throw error;
+      
+    if (error) {
+      logger.error({ err: error, id: req.params.id, payload, context: "PUT /api/staff" }, "Supabase update error");
+      throw error;
+    }
+    
     const row = data?.[0];
     res.json({
       ...row,
