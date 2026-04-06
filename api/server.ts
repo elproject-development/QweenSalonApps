@@ -358,17 +358,42 @@ app.post("/api/services", async (req, res) => {
     // Map duration to duration_minutes
     if (duration !== undefined) payload.duration_minutes = Number(duration);
     
-    // Note: category is a foreign key (category_id), not handled here
-    // If category_id is sent directly, use it
-    if (req.body.category_id) payload.category_id = req.body.category_id;
+    // Handle category: convert category string to category_id
+    if (category && typeof category === "string") {
+      const { data: categories } = await supabase
+        .from("categories")
+        .select("id")
+        .eq("name", category)
+        .limit(1);
+      
+      if (categories && categories.length > 0) {
+        payload.category_id = categories[0].id;
+      }
+    } else if (req.body.category_id) {
+      payload.category_id = req.body.category_id;
+    }
 
     const { data, error } = await supabase.from("services").insert(payload).select();
     if (error) throw error;
     
     const row = data?.[0];
+    
+    // Fetch category name for response
+    let categoryName = "";
+    if (row?.category_id) {
+      const { data: categories } = await supabase
+        .from("categories")
+        .select("name")
+        .eq("id", row.category_id)
+        .limit(1);
+      if (categories && categories.length > 0) {
+        categoryName = categories[0].name;
+      }
+    }
+    
     res.json({
       ...row,
-      category: row.category_id,
+      category: categoryName,
       duration: row.duration_minutes,
       isActive: row.is_active ?? true,
     });
@@ -389,9 +414,20 @@ app.put("/api/services/:id", async (req, res) => {
     // Map duration to duration_minutes
     if (duration !== undefined) payload.duration_minutes = Number(duration);
     
-    // Note: category is a foreign key (category_id), not handled here
-    // If category_id is sent directly, use it
-    if (req.body.category_id !== undefined) payload.category_id = req.body.category_id;
+    // Handle category: convert category string to category_id
+    if (category && typeof category === "string") {
+      const { data: categories } = await supabase
+        .from("categories")
+        .select("id")
+        .eq("name", category)
+        .limit(1);
+      
+      if (categories && categories.length > 0) {
+        payload.category_id = categories[0].id;
+      }
+    } else if (req.body.category_id !== undefined) {
+      payload.category_id = req.body.category_id;
+    }
 
     const { data, error } = await supabase
       .from("services")
@@ -401,9 +437,23 @@ app.put("/api/services/:id", async (req, res) => {
     if (error) throw error;
     
     const row = data?.[0];
+    
+    // Fetch category name for response
+    let categoryName = "";
+    if (row?.category_id) {
+      const { data: categories } = await supabase
+        .from("categories")
+        .select("name")
+        .eq("id", row.category_id)
+        .limit(1);
+      if (categories && categories.length > 0) {
+        categoryName = categories[0].name;
+      }
+    }
+    
     res.json({
       ...row,
-      category: row.category_id,
+      category: categoryName,
       duration: row.duration_minutes,
       isActive: row.is_active ?? true,
     });
