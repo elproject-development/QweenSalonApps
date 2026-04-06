@@ -263,9 +263,26 @@ app.get("/api/appointments", async (req, res) => {
 
 app.post("/api/appointments", async (req, res) => {
   try {
-    const { data, error } = await supabase.from("appointments").insert(req.body).select().single();
+    const payload: any = {
+      customer_name: req.body.customerName,
+      customer_phone: req.body.customerPhone,
+      service_name: req.body.serviceName,
+      staff_name: req.body.staffName,
+      status: req.body.status || "pending",
+      scheduled_at: req.body.scheduledAt,
+      notes: req.body.notes,
+    };
+
+    // Remove undefined/null values
+    Object.keys(payload).forEach(key => {
+      if (payload[key] === undefined || payload[key] === null) {
+        delete payload[key];
+      }
+    });
+
+    const { data, error } = await supabase.from("appointments").insert(payload).select();
     if (error) throw error;
-    res.json(data);
+    res.json(data?.[0]);
   } catch (err) {
     respond500(res, "POST /api/appointments", err);
   }
@@ -273,14 +290,22 @@ app.post("/api/appointments", async (req, res) => {
 
 app.put("/api/appointments/:id", async (req, res) => {
   try {
+    const payload: any = {};
+    if (req.body.customerName !== undefined) payload.customer_name = req.body.customerName;
+    if (req.body.customerPhone !== undefined) payload.customer_phone = req.body.customerPhone;
+    if (req.body.serviceName !== undefined) payload.service_name = req.body.serviceName;
+    if (req.body.staffName !== undefined) payload.staff_name = req.body.staffName;
+    if (req.body.status !== undefined) payload.status = req.body.status;
+    if (req.body.scheduledAt !== undefined) payload.scheduled_at = req.body.scheduledAt;
+    if (req.body.notes !== undefined) payload.notes = req.body.notes;
+
     const { data, error } = await supabase
       .from("appointments")
-      .update(req.body)
+      .update(payload)
       .eq("id", req.params.id)
-      .select()
-      .single();
+      .select();
     if (error) throw error;
-    res.json(data);
+    res.json(data?.[0]);
   } catch (err) {
     respond500(res, "PUT /api/appointments", err);
   }
