@@ -1423,7 +1423,17 @@ app.get("/api/dashboard/top-services", async (req, res) => {
       }
     }
 
-    res.json(Object.values(serviceStats).sort((a, b) => b.revenue - a.revenue).slice(0, 5));
+    const topServices = Object.values(serviceStats)
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 5)
+      .map(service => ({
+        serviceId: service.serviceId,
+        serviceName: service.name,
+        count: service.count,
+        revenue: service.revenue
+      }));
+
+    res.json(topServices);
   } catch (err) {
     respond500(res, "GET /api/dashboard/top-services", err);
   }

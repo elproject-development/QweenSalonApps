@@ -132,7 +132,7 @@ export type RevenueChartPoint = {
 };
 
 export type TopService = {
-  serviceId: number;
+  serviceId: string;
   serviceName: string;
   count: number;
   revenue: number;
