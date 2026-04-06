@@ -124,7 +124,6 @@ export function Kasir() {
           setCart([]);
           setDiscount("");
           setTax("");
-          setSelectedCustomerId("general");
           setSelectedStaffId("none");
         },
         onError: () => {
@@ -222,7 +221,7 @@ export function Kasir() {
           <CardContent className="space-y-4">
             <div className="space-y-1.5">
               <Label className="text-xs">Pelanggan</Label>
-              <Select key={selectedCustomerId} value={selectedCustomerId} onValueChange={setSelectedCustomerId}>
+              <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId}>
                 <SelectTrigger className="h-9">
                   <SelectValue placeholder="Pilih pelanggan" />
                 </SelectTrigger>
