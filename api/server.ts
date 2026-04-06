@@ -315,10 +315,27 @@ app.get("/api/services", async (req, res) => {
       return;
     }
     
+    // Fetch categories to map category_id to category name
+    const categoryIds = Array.from(new Set((data ?? []).map((s: any) => s.category_id).filter(Boolean)));
+    let categoryNameById = new Map<string, string>();
+    
+    if (categoryIds.length > 0) {
+      const { data: categories, error: categoriesError } = await supabase
+        .from("categories")
+        .select("id, name")
+        .in("id", categoryIds);
+      
+      if (!categoriesError) {
+        categoryNameById = new Map(
+          (categories ?? []).map((c: any) => [String(c.id), String(c.name ?? "")]),
+        );
+      }
+    }
+    
     // Map database columns to frontend format
     const mapped = (data ?? []).map((s: any) => ({
       ...s,
-      category: s.category_id, // Map category_id to category for frontend
+      category: s.category_id ? categoryNameById.get(String(s.category_id)) ?? "" : "",
       duration: s.duration_minutes, // Map duration_minutes to duration
       isActive: s.is_active ?? true,
     }));
