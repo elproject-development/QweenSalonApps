@@ -34,7 +34,7 @@ function HistorySheet({
   onClose,
   allTransactions 
 }: { 
-  customerId: number; 
+  customerId: string; 
   customerName: string;
   customerPhone: string;
   open: boolean; 
@@ -115,9 +115,9 @@ export function Pelanggan() {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [showDialog, setShowDialog] = useState(false);
-  const [editId, setEditId] = useState<number | null>(null);
+  const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<CustomerFormData>(emptyForm());
-  const [activeCustomer, setActiveCustomer] = useState<{id: number, name: string} | null>(null);
+  const [activeCustomer, setActiveCustomer] = useState<{id: string, name: string, phone: string} | null>(null);
 
   const { data: customers, isLoading: loadingCustomers } = useListCustomers({ search: search || undefined });
   const { data: allTransactions } = useListTransactions();
@@ -125,36 +125,6 @@ export function Pelanggan() {
   const createCustomer = useCreateCustomer();
   const updateCustomer = useUpdateCustomer();
   const deleteCustomer = useDeleteCustomer();
-
-  const getCustomerStats = (customer: any) => {
-    if (!allTransactions) return { visits: 0, spent: 0 };
-    
-    const customerTransactions = allTransactions.filter((tx: any) => {
-      // 1. Cocokkan via UUID asli (paling akurat)
-      const txCustId = tx.customerId || tx.customer_id;
-      const currentId = customer.uuid || customer.id_original || customer.id;
-      const idMatch = txCustId && String(txCustId).trim() === String(currentId).trim();
-      
-      // 2. Cocokkan via Nama (fallback 1)
-      const txCustName = (tx.customerName || tx.customer_name || "").toLowerCase().trim();
-      const currentCustName = (customer.name || "").toLowerCase().trim();
-      const nameMatch = txCustName !== "" && txCustName === currentCustName;
-
-      // 3. Cocokkan via Phone (fallback 2 - sangat unik)
-      const txCustPhone = (tx.customerPhone || tx.customer_phone || "").replace(/\D/g, "");
-      const currentCustPhone = (customer.phone || "").replace(/\D/g, "");
-      const phoneMatch = txCustPhone !== "" && txCustPhone === currentCustPhone;
-      
-      const isCompleted = tx.status === "completed" || tx.status === "Selesai" || tx.paymentStatus === "paid";
-      
-      return (idMatch || nameMatch || phoneMatch) && isCompleted;
-    });
-
-    return {
-      visits: customerTransactions.length,
-      spent: customerTransactions.reduce((sum: number, tx: any) => sum + (Number(tx.total || tx.total_amount || tx.amount || 0)), 0)
-    };
-  };
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: getListCustomersQueryKey() });
@@ -193,7 +163,7 @@ export function Pelanggan() {
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     try {
       await deleteCustomer.mutateAsync({ id });
       toast({ title: "Pelanggan dihapus", variant: "success" });
@@ -239,78 +209,75 @@ export function Pelanggan() {
               <p className="text-xs text-muted-foreground/70 mt-1">Tambahkan pelanggan baru untuk mulai</p>
             </CardContent>
           </Card>
-        ) : customers.map((c: any) => {
-          const stats = getCustomerStats(c);
-          return (
-            <Card key={c.id} className="overflow-hidden border-none shadow-sm bg-card/50">
-              <CardContent className="p-4">
-                <div className="flex items-end justify-between gap-3">
-                  {/* Avatar & Main Info */}
-                  <div className="flex gap-3 min-w-0">
-                    <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold shrink-0 ring-1 ring-primary/20 mb-0.5">
-                      {c.name.charAt(0).toUpperCase()}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5 mb-2.5">
-                        <p className="font-bold text-sm sm:text-base truncate ml-4.5">
-                          {c.name.length > 15 ? `${c.name.substring(0, 15)}...` : c.name}
-                        </p>
-                      </div>
-                      <p className="text-xs text-muted-foreground flex items-center gap-1.5 truncate mb-0.5">
-                        <Phone className="w-3 h-3 text-primary/60" /> {c.phone}
+        ) : customers.map((c: any) => (
+          <Card key={c.id} className="overflow-hidden border-none shadow-sm bg-card/50">
+            <CardContent className="p-4">
+              <div className="flex items-end justify-between gap-3">
+                {/* Avatar & Main Info */}
+                <div className="flex gap-3 min-w-0">
+                  <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold shrink-0 ring-1 ring-primary/20 mb-0.5">
+                    {c.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 mb-2.5">
+                      <p className="font-bold text-sm sm:text-base truncate ml-4.5">
+                        {c.name.length > 15 ? `${c.name.substring(0, 15)}...` : c.name}
                       </p>
                     </div>
-                  </div>
-
-                  <div className="flex flex-col items-end gap-2 shrink-0">
-                    <div className="flex gap-1">
-                      <Button 
-                        size="icon" 
-                        variant="ghost" 
-                        className="w-8 h-8 text-muted-foreground hover:text-primary" 
-                        onClick={() => setActiveCustomer({ id: c.id, name: c.name })}
-                      >
-                        <History className="w-4 h-4" />
-                      </Button>
-                      <Button 
-                        size="icon" 
-                        variant="ghost" 
-                        className="w-8 h-8 text-muted-foreground hover:text-primary" 
-                        onClick={() => openEdit(c)}
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </Button>
-                      <Button 
-                        size="icon" 
-                        variant="ghost" 
-                        className="w-8 h-8 text-muted-foreground hover:text-destructive" 
-                        onClick={() => handleDelete(c.id)}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-
-                    <div className="flex flex-wrap gap-1.5 justify-end">
-                      <Badge variant="outline" className="bg-primary/5 text-primary border-primary/10 text-[10px] py-0 px-1.5 font-semibold">
-                        {stats.visits || 0}x kunjungan
-                      </Badge>
-                      <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-100 text-[10px] py-0 px-1.5 font-semibold">
-                        {formatRupiah(stats.spent || 0)}
-                      </Badge>
-                    </div>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1.5 truncate mb-0.5">
+                      <Phone className="w-3 h-3 text-primary/60" /> {c.phone}
+                    </p>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          );
-        })}
+
+                <div className="flex flex-col items-end gap-2 shrink-0">
+                  <div className="flex gap-1">
+                    <Button 
+                      size="icon" 
+                      variant="ghost" 
+                      className="w-8 h-8 text-muted-foreground hover:text-primary" 
+                      onClick={() => setActiveCustomer({ id: c.id, name: c.name, phone: c.phone })}
+                    >
+                      <History className="w-4 h-4" />
+                    </Button>
+                    <Button 
+                      size="icon" 
+                      variant="ghost" 
+                      className="w-8 h-8 text-muted-foreground hover:text-primary" 
+                      onClick={() => openEdit(c)}
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </Button>
+                    <Button 
+                      size="icon" 
+                      variant="ghost" 
+                      className="w-8 h-8 text-muted-foreground hover:text-destructive" 
+                      onClick={() => handleDelete(c.id)}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5 justify-end">
+                    <Badge variant="outline" className="bg-primary/5 text-primary border-primary/10 text-[10px] py-0 px-1.5 font-semibold">
+                      {c.visitCount || 0}x kunjungan
+                    </Badge>
+                    <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-100 text-[10px] py-0 px-1.5 font-semibold">
+                      {formatRupiah(c.totalSpend || 0)}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       {activeCustomer && (
         <HistorySheet 
           customerId={activeCustomer.id} 
           customerName={activeCustomer.name}
-          customerPhone={(customers?.find((c: any) => c.id === activeCustomer.id) as any)?.phone || ""}
+          customerPhone={activeCustomer.phone}
           open={!!activeCustomer} 
           onClose={() => setActiveCustomer(null)} 
           allTransactions={allTransactions}
