@@ -66,7 +66,7 @@ export function Transaksi() {
               <CardContent className="p-3 sm:p-4">
                 <div className="absolute top-3 right-3 sm:top-4 sm:right-4">
                   <span className="text-[10px] sm:text-xs text-muted-foreground whitespace-nowrap">
-                    {formatDate(trx.createdAt, "dd/MM/yyyy HH:mm")}
+                    {`${formatDate(trx.createdAt, "dd MMMM yyyy").toLowerCase()} - ${formatDate(trx.createdAt, "HH:mm")}`}
                   </span>
                 </div>
                 <div className="flex items-start gap-3">
@@ -88,10 +88,10 @@ export function Transaksi() {
                     </div>
                     <div className="flex items-center flex-wrap gap-2 pt-1">
                       <Badge
-                        variant={trx.status === "completed" ? "default" : "destructive"}
-                        className="text-[10px] sm:text-xs px-2 py-0.5"
+                        variant="default"
+                        className="text-[10px] sm:text-xs px-2 py-0.5 !bg-emerald-600 !text-white"
                       >
-                        {trx.status === "completed" ? "Selesai" : "Selesai"}
+                        Selesai
                       </Badge>
                       <span className="text-[10px] sm:text-xs text-muted-foreground bg-secondary px-2 py-0.5 rounded-md">
                         {PAYMENT_LABEL[trx.paymentMethod] ?? trx.paymentMethod}

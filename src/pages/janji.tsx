@@ -229,7 +229,7 @@ export function Janji() {
                   <div className="flex items-center gap-1.5 text-[10px] sm:text-xs text-muted-foreground font-medium">
                     <Clock className="w-3 h-3 text-primary/60" />
                     <span>
-                      {`${formatDate(appt.scheduledAt, "dd MMMM yyyy").toLowerCase()} - jam : ${formatDate(appt.scheduledAt, "HH : mm")}`}
+                      {`${formatDate(appt.scheduledAt, "dd MMMM yyyy").toLowerCase()} - ${formatDate(appt.scheduledAt, "HH:mm")}`}
                     </span>
                   </div>
                   <Badge
