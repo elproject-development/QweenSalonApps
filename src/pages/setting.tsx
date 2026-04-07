@@ -13,6 +13,7 @@ import { supabase } from "@/utils/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/components/theme-provider";
 import { useNotifications } from "@/components/notification-provider";
+import { Capacitor, registerPlugin } from "@capacitor/core";
 
 export default function Setting() {
   const [isDeleting, setIsDeleting] = useState(false);
@@ -24,7 +25,55 @@ export default function Setting() {
   const [isExporting, setIsExporting] = useState(false);
   const { theme, setTheme, fontSize, setFontSize } = useTheme();
   const { toast } = useToast();
-  const { settings: notifSettings, setSettings: setNotifSettings, requestPermission, sendNotification, permissionStatus } = useNotifications();
+  const { settings: notifSettings, setSettings: setNotifSettings, requestPermission, sendNotification, permissionStatus, schedulePrayerReminders, cancelPrayerReminders } = useNotifications();
+
+  const PRAYER_SETTINGS_STORAGE_KEY = "qweensalon:prayer_notifications";
+  const [prayerEnabled, setPrayerEnabled] = useState(false);
+  const [prayerCity, setPrayerCity] = useState("Yogyakarta");
+
+  const FOREGROUND_SETTINGS_STORAGE_KEY = "qweensalon:foreground_service";
+  const [foregroundEnabled, setForegroundEnabled] = useState(false);
+
+  const ForegroundService = registerPlugin<any>("QweenForegroundService");
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(PRAYER_SETTINGS_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      setPrayerEnabled(Boolean(parsed?.enabled));
+      setPrayerCity(String(parsed?.city || "Yogyakarta"));
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(FOREGROUND_SETTINGS_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      setForegroundEnabled(Boolean(parsed?.enabled));
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(PRAYER_SETTINGS_STORAGE_KEY, JSON.stringify({ enabled: prayerEnabled, city: prayerCity }));
+    } catch {
+      // ignore
+    }
+  }, [prayerEnabled, prayerCity]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(FOREGROUND_SETTINGS_STORAGE_KEY, JSON.stringify({ enabled: foregroundEnabled }));
+    } catch {
+      // ignore
+    }
+  }, [foregroundEnabled]);
 
   const handleLogout = async () => {
     try {
@@ -526,6 +575,72 @@ export default function Setting() {
             <Button variant="ghost" size="sm" className="w-full text-xs" onClick={() => sendNotification("Tes Notifikasi", { body: "Sudah aktif!" })} disabled={permissionStatus !== "granted"}>
               Kirim Notifikasi Percobaan
             </Button>
+
+            {Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android" && (
+              <div className="border-t pt-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-medium">Mode Background</p>
+                    <p className="text-xs text-muted-foreground">Aktifkan layanan foreground agar notifikasi lebih stabil</p>
+                  </div>
+                  <Switch
+                    checked={foregroundEnabled}
+                    onCheckedChange={async (checked) => {
+                      setForegroundEnabled(checked);
+                      try {
+                        if (checked) {
+                          await ForegroundService.start();
+                        } else {
+                          await ForegroundService.stop();
+                        }
+                      } catch {
+                        // ignore
+                      }
+                    }}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-medium">Pengingat Sholat</p>
+                    <p className="text-xs text-muted-foreground">Notifikasi 10 menit sebelum waktu sholat</p>
+                  </div>
+                  <Switch
+                    checked={prayerEnabled}
+                    onCheckedChange={async (checked) => {
+                      setPrayerEnabled(checked);
+                      if (checked) {
+                        await schedulePrayerReminders(prayerCity);
+                      } else {
+                        await cancelPrayerReminders();
+                      }
+                    }}
+                  />
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="prayer-city">Kota</Label>
+                  <Input
+                    id="prayer-city"
+                    value={prayerCity}
+                    readOnly
+                    placeholder="Contoh: Jakarta"
+                    disabled={!prayerEnabled}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    disabled={!prayerEnabled}
+                    onClick={async () => {
+                      await schedulePrayerReminders(prayerCity);
+                    }}
+                  >
+                    Jadwalkan Ulang Hari Ini
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 

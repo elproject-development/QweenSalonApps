@@ -18,7 +18,7 @@ import { useNotifications } from "@/components/notification-provider";
 
 const STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "outline" | "destructive" }> = {
   pending: { label: "Menunggu", variant: "secondary" },
-  confirmed: { label: "Dikonfirmasi", variant: "default" },
+  confirmed: { label: "Dikonfirmasi", variant: "outline" },
   completed: { label: "Selesai", variant: "outline" },
   cancelled: { label: "Dibatalkan", variant: "destructive" },
 };
@@ -228,12 +228,16 @@ export function Janji() {
                 <div className="mt-3 flex items-center justify-between pt-2 border-t border-border/30">
                   <div className="flex items-center gap-1.5 text-[10px] sm:text-xs text-muted-foreground font-medium">
                     <Clock className="w-3 h-3 text-primary/60" />
-                    <span className="flex items-center gap-3">
-                      <span>{formatDate(appt.scheduledAt, "dd/MM/yyyy")}</span>
-                      <span>{formatDate(appt.scheduledAt, "HH:mm")}</span>
+                    <span>
+                      {`${formatDate(appt.scheduledAt, "dd MMMM yyyy").toLowerCase()} - jam : ${formatDate(appt.scheduledAt, "HH : mm")}`}
                     </span>
                   </div>
-                  <Badge variant={statusInfo.variant} className="text-[10px] px-2 py-0 font-bold uppercase shrink-0 mr-2">
+                  <Badge
+                    variant={statusInfo.variant}
+                    className={`text-[10px] px-2 py-0 font-bold uppercase shrink-0 mr-2 ${
+                      appt.status === "confirmed" ? "bg-emerald-600 text-white border-emerald-600" : ""
+                    }`}
+                  >
                     {statusInfo.label}
                   </Badge>
                 </div>
