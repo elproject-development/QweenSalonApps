@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { Capacitor } from "@capacitor/core";
+import { LocalNotifications } from "@capacitor/local-notifications";
 
 interface NotificationSettings {
   appointments: boolean;
@@ -11,6 +13,10 @@ interface NotificationContextType {
   setSettings: (settings: NotificationSettings) => void;
   requestPermission: () => Promise<boolean>;
   sendNotification: (title: string, options?: NotificationOptions) => void;
+  scheduleAppointmentReminders: (
+    appointments: Array<{ id: string; scheduledAt?: string | null; customerName?: string | null; serviceName?: string | null }>,
+    minutesBefore?: number,
+  ) => Promise<void>;
   permissionStatus: NotificationPermission;
 }
 
@@ -33,6 +39,26 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   };
 
   const requestPermission = async () => {
+    if (Capacitor.isNativePlatform()) {
+      const perm = await LocalNotifications.requestPermissions();
+      const granted = perm.display === "granted";
+      setPermissionStatus(granted ? "granted" : "denied");
+      if (granted) {
+        toast({
+          title: "Notifikasi Aktif",
+          description: "Anda akan menerima pengingat janji temu.",
+          variant: "success",
+        });
+        return true;
+      }
+      toast({
+        title: "Izin Ditolak",
+        description: "Anda perlu memberikan izin untuk menerima notifikasi.",
+        variant: "destructive",
+      });
+      return false;
+    }
+
     if (!("Notification" in window)) {
       toast({
         title: "Tidak Didukung",
@@ -63,6 +89,20 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   };
 
   const sendNotification = (title: string, options?: NotificationOptions) => {
+    if (Capacitor.isNativePlatform()) {
+      void LocalNotifications.schedule({
+        notifications: [
+          {
+            id: Date.now() % 2147483647,
+            title,
+            body: (options as any)?.body,
+            schedule: { at: new Date(Date.now() + 250) },
+          },
+        ],
+      });
+      return;
+    }
+
     if (permissionStatus === "granted") {
       // In a real APK/PWA environment, this would show a system notification
       new Notification(title, {
@@ -72,8 +112,61 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     }
   };
 
+  const scheduleAppointmentReminders: NotificationContextType["scheduleAppointmentReminders"] = async (
+    appointments,
+    minutesBefore = 15,
+  ) => {
+    if (!Capacitor.isNativePlatform()) return;
+    if (!settings.appointments) return;
+
+    const perm = await LocalNotifications.checkPermissions();
+    if (perm.display !== "granted") {
+      const ok = await requestPermission();
+      if (!ok) return;
+    }
+
+    const now = Date.now();
+    const safeIntId = (id: string) => {
+      const hex = String(id).replace(/-/g, "").slice(0, 8);
+      const n = parseInt(hex || "0", 16);
+      return Number.isFinite(n) ? (n % 2147483647) : (Date.now() % 2147483647);
+    };
+
+    // Cancel existing reminders for these appointments before re-scheduling
+    const cancelIds = appointments.map((a) => ({ id: safeIntId(a.id) }));
+    try {
+      await LocalNotifications.cancel({ notifications: cancelIds });
+    } catch {
+      // ignore
+    }
+
+    const notifications = appointments
+      .map((a) => {
+        const whenIso = a.scheduledAt;
+        if (!whenIso) return null;
+        const scheduledAt = new Date(whenIso);
+        if (isNaN(scheduledAt.getTime())) return null;
+        const remindAtMs = scheduledAt.getTime() - minutesBefore * 60_000;
+        if (remindAtMs <= now + 5_000) return null;
+
+        const bodyParts = [a.customerName, a.serviceName].filter(Boolean);
+        const body = bodyParts.length > 0 ? bodyParts.join(" • ") : "";
+
+        return {
+          id: safeIntId(a.id),
+          title: "Pengingat Janji Temu",
+          body,
+          schedule: { at: new Date(remindAtMs) },
+        };
+      })
+      .filter(Boolean) as Array<any>;
+
+    if (notifications.length === 0) return;
+    await LocalNotifications.schedule({ notifications });
+  };
+
   return (
-    <NotificationContext.Provider value={{ settings, setSettings, requestPermission, sendNotification, permissionStatus }}>
+    <NotificationContext.Provider value={{ settings, setSettings, requestPermission, sendNotification, scheduleAppointmentReminders, permissionStatus }}>
       {children}
     </NotificationContext.Provider>
   );

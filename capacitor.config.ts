@@ -3,7 +3,7 @@ import { CapacitorConfig } from '@capacitor/cli';
 const config: CapacitorConfig = {
   appId: 'com.qweensalon.app',
   appName: 'Qween Salon',
-  webDir: 'dist/public'
+  webDir: 'dist'
 };
 
 export default config;

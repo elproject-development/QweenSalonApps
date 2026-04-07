@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useListAppointments, useCreateAppointment, useUpdateAppointment, useDeleteAppointment, useListServices, useListStaff, getListAppointmentsQueryKey } from "@/lib/api-client-react";
 import { formatDate, formatRupiah } from "@/lib/format";
 import { useQueryClient } from "@tanstack/react-query";
@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Plus, Calendar, Clock, User, Scissors, Phone, CheckCircle, XCircle, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useNotifications } from "@/components/notification-provider";
 
 const STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "outline" | "destructive" }> = {
   pending: { label: "Menunggu", variant: "secondary" },
@@ -29,6 +30,7 @@ function getTodayStr() {
 export function Janji() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { scheduleAppointmentReminders } = useNotifications();
   const [selectedDate, setSelectedDate] = useState(getTodayStr());
   const [filterStatus, setFilterStatus] = useState<string>("");
   const [showDialog, setShowDialog] = useState(false);
@@ -46,6 +48,19 @@ export function Janji() {
     date: selectedDate || undefined,
     status: (filterStatus && filterStatus !== "all") ? filterStatus as any : undefined,
   });
+
+  useEffect(() => {
+    if (!appointments || appointments.length === 0) return;
+    void scheduleAppointmentReminders(
+      appointments.map((a: any) => ({
+        id: String(a.id),
+        scheduledAt: a.scheduledAt ?? a.appointment_date ?? a.appointmentDate ?? null,
+        customerName: a.customerName ?? null,
+        serviceName: a.serviceName ?? null,
+      })),
+      15,
+    );
+  }, [appointments, scheduleAppointmentReminders]);
 
   const { data: services } = useListServices();
   const { data: staff } = useListStaff();
