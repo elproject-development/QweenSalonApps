@@ -145,7 +145,7 @@ export function Kasir() {
       <div className="lg:col-span-2 space-y-4">
         <div className="flex flex-col space-y-4">
           <div>
-            <h1 className="text-xl font-bold tracking-tight">Kasir / POS</h1>
+            <h1 className="text-xl font-bold tracking-tight">KasirApps</h1>
             <p className="text-muted-foreground text-xs">Pilih layanan untuk ditambahkan ke keranjang.</p>
           </div>
           <div className="relative w-full">

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useGetDashboardSummary, useGetRevenueChart, useGetTopServices, useListCustomers, useListTransactions, useListExpenses } from "@/lib/api-client-react";
 import { formatRupiah } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -149,6 +149,34 @@ export function Laporan() {
     return s;
   };
 
+  const normalizedChartData = useMemo(() => {
+    const raw = (chartData ?? []) as Array<any>;
+    if (chartPeriod !== "month" && chartPeriod !== "year") return raw;
+
+    const base = monthLabels.map((m) => ({ label: m, revenue: 0, expenses: 0 }));
+    for (const p of raw) {
+      const s = String(p?.label ?? "").trim();
+
+      let idx: number | null = null;
+      const m1 = s.match(/^\d{4}-(\d{2})$/);
+      if (m1) {
+        const n = Number(m1[1]);
+        idx = Number.isFinite(n) && n >= 1 && n <= 12 ? n - 1 : null;
+      } else {
+        const n = Number(s);
+        idx = Number.isFinite(n) && n >= 1 && n <= 12 ? n - 1 : null;
+      }
+
+      if (idx == null) continue;
+      base[idx] = {
+        label: monthLabels[idx],
+        revenue: Number(p?.revenue ?? 0) || 0,
+        expenses: Number(p?.expenses ?? 0) || 0,
+      };
+    }
+    return base;
+  }, [chartData, chartPeriod, monthLabels]);
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
@@ -270,10 +298,10 @@ export function Laporan() {
           ) : (
             <ResponsiveContainer width="100%" height={200}>
               <AreaChart 
-                data={chartData ?? []} 
+                data={normalizedChartData} 
                 margin={{ 
                   top: 10, 
-                  right: isMobile ? 5 : 10, 
+                  right: 0, 
                   left: 0, 
                   bottom: 0 
                 }}
@@ -285,9 +313,10 @@ export function Laporan() {
                   axisLine={false}
                   tickLine={false}
                   tickFormatter={formatXAxisLabel}
+                  interval={(chartPeriod === "week" || chartPeriod === "month" || chartPeriod === "year") ? 0 : "preserveEnd"}
                   tickMargin={10}
-                  padding={{ left: 12, right: 12 }}
-                  minTickGap={10}
+                  padding={{ left: 0, right: 0 }}
+                  minTickGap={(chartPeriod === "week" || chartPeriod === "month" || chartPeriod === "year") ? 0 : 10}
                 />
                 <YAxis hide />
                 <Area 

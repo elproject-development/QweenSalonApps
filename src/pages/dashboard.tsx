@@ -4,8 +4,8 @@ import { mockSummary, mockChartData, mockTopServices, mockRecentTransactions } f
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useEffect, useRef, useState } from "react";
-import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis } from "recharts";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Users, Receipt, Calendar as CalendarIcon, TrendingUp } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -73,28 +73,153 @@ export function Dashboard() {
   }, [displaySummary.revenue, loadingSummary]);
 
   const monthLabels = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+  const monthLabelsFull = [
+    "Januari",
+    "Februari",
+    "Maret",
+    "April",
+    "Mei",
+    "Juni",
+    "Juli",
+    "Agustus",
+    "September",
+    "Oktober",
+    "November",
+    "Desember",
+  ];
+  const dayLabels = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
+  const dayLabelsFull = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"];
+  const monthIndexFromLabel = (label: any): number | null => {
+    if (label == null) return null;
+    const s = String(label).trim();
+
+    const m1 = s.match(/^(\d{4})-(\d{2})$/);
+    if (m1) {
+      const idx = Number(m1[2]) - 1;
+      return idx >= 0 && idx <= 11 ? idx : null;
+    }
+
+    const n = Number(s);
+    if (!Number.isNaN(n) && n >= 1 && n <= 12) return n - 1;
+
+    const idx = monthLabels.findIndex((m) => m.toLowerCase() === s.toLowerCase());
+    return idx >= 0 ? idx : null;
+  };
+
   const formatXAxisLabel = (label: any) => {
     if (label == null) return "";
     const s = String(label);
 
-    if (period === "month") {
-      const m1 = s.match(/^(\d{4})-(\d{2})$/);
-      if (m1) {
-        const idx = Number(m1[2]) - 1;
-        return monthLabels[idx] ?? s;
-      }
+    if (chartPeriod === "year") {
+      const idx = monthIndexFromLabel(s);
+      if (idx != null) return monthLabels[idx] ?? s;
+    }
 
-      const n = Number(s);
-      if (!Number.isNaN(n) && n >= 1 && n <= 12) {
-        return monthLabels[n - 1] ?? s;
-      }
+    if (chartPeriod === "week") {
+      const dayIdx = (() => {
+        const cleaned = String(s).trim();
 
-      const idx = monthLabels.findIndex((m) => m.toLowerCase() === s.toLowerCase());
-      if (idx >= 0) return monthLabels[idx];
+        const direct = dayLabels.findIndex((d) => d.toLowerCase() === cleaned.toLowerCase());
+        if (direct >= 0) return direct;
+
+        const enMap: Record<string, number> = {
+          mon: 0,
+          tue: 1,
+          wed: 2,
+          thu: 3,
+          fri: 4,
+          sat: 5,
+          sun: 6,
+        };
+        const key3 = cleaned.slice(0, 3).toLowerCase();
+        if (key3 in enMap) return enMap[key3];
+
+        const d = new Date(cleaned);
+        if (!Number.isNaN(d.getTime())) {
+          const js = d.getDay();
+          const map = [6, 0, 1, 2, 3, 4, 5];
+          return map[js] ?? null;
+        }
+
+        return null;
+      })();
+
+      if (dayIdx != null) return dayLabels[dayIdx] ?? s;
     }
 
     return s;
   };
+
+  const formatTooltipLabel = (label: any) => {
+    if (label == null) return "";
+    if (chartPeriod === "year") {
+      const idx = monthIndexFromLabel(label);
+      if (idx != null) return monthLabelsFull[idx] ?? String(label);
+      return String(label);
+    }
+
+    if (chartPeriod !== "week") return formatXAxisLabel(label);
+
+    const idx = dayLabels.findIndex((d) => String(label).trim().toLowerCase() === d.toLowerCase());
+    if (idx >= 0) return dayLabelsFull[idx] ?? String(label);
+    return formatXAxisLabel(label);
+  };
+
+  const normalizedChartData = useMemo(() => {
+    if (chartPeriod !== "year") return displayChartData;
+
+    const base = monthLabels.map((m) => ({ label: m, revenue: 0 }));
+    for (const p of displayChartData as Array<any>) {
+      const idx = monthIndexFromLabel(p?.label);
+      if (idx == null) continue;
+      base[idx] = { label: monthLabels[idx], revenue: Number(p?.revenue ?? 0) || 0 };
+    }
+    return base;
+  }, [chartPeriod, displayChartData]);
+
+  const normalizedWeekChartData = useMemo(() => {
+    if (chartPeriod !== "week") return normalizedChartData;
+
+    const base = dayLabels.map((d) => ({ label: d, revenue: 0 }));
+
+    for (const p of (displayChartData as Array<any>) || []) {
+      const idx = (() => {
+        const raw = p?.label;
+        if (raw == null) return null;
+        const cleaned = String(raw).trim();
+
+        const direct = dayLabels.findIndex((d) => d.toLowerCase() === cleaned.toLowerCase());
+        if (direct >= 0) return direct;
+
+        const enMap: Record<string, number> = {
+          mon: 0,
+          tue: 1,
+          wed: 2,
+          thu: 3,
+          fri: 4,
+          sat: 5,
+          sun: 6,
+        };
+        const key3 = cleaned.slice(0, 3).toLowerCase();
+        if (key3 in enMap) return enMap[key3];
+
+        const d = new Date(cleaned);
+        if (!Number.isNaN(d.getTime())) {
+          const js = d.getDay();
+          const map = [6, 0, 1, 2, 3, 4, 5];
+          return map[js] ?? null;
+        }
+
+        return null;
+      })();
+
+      if (idx == null) continue;
+      const rev = Number(p?.revenue ?? 0) || 0;
+      base[idx] = { label: dayLabels[idx], revenue: (Number(base[idx].revenue) || 0) + rev };
+    }
+
+    return base;
+  }, [chartPeriod, dayLabels, displayChartData, normalizedChartData]);
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -176,20 +301,33 @@ export function Dashboard() {
               ) : displayChartData && displayChartData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
-                    data={displayChartData}
-                    margin={{ top: 12, right: 8, left: 8, bottom: 0 }}
+                    data={chartPeriod === "week" ? normalizedWeekChartData : normalizedChartData}
+                    margin={{ top: 12, right: 0, left: 0, bottom: 0 }}
                   >
                     <XAxis
                       dataKey="label"
-                      tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))", textAnchor: "middle" }}
+                      tick={{ fontSize: isMobile ? 10 : 12, fill: "hsl(var(--muted-foreground))", textAnchor: "middle" }}
                       tickLine={false}
                       axisLine={false}
                       tickFormatter={formatXAxisLabel}
+                      interval={(chartPeriod === "week" || chartPeriod === "year") ? 0 : "preserveEnd"}
                       tickMargin={10}
-                      padding={{ left: 12, right: 12 }}
-                      minTickGap={12}
+                      padding={{ left: 0, right: 0 }}
+                      minTickGap={(chartPeriod === "week" || chartPeriod === "year") ? 0 : 12}
                     />
                     <YAxis hide />
+                    <Tooltip
+                      cursor={false}
+                      labelFormatter={(value: any) => formatTooltipLabel(value)}
+                      formatter={(value: any) => [formatRupiah(Number(value) || 0), "Pendapatan"]}
+                      contentStyle={{
+                        background: "hsl(var(--background))",
+                        border: "1px solid hsl(var(--border))",
+                        borderRadius: 10,
+                        boxShadow: "0 12px 30px rgba(0,0,0,0.12)",
+                        fontSize: 12,
+                      }}
+                    />
                     <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} maxBarSize={48} />
                   </BarChart>
                 </ResponsiveContainer>

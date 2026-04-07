@@ -55,6 +55,18 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     localStorage.setItem("qween-salon-notifications", JSON.stringify(newSettings));
   };
 
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    void (async () => {
+      try {
+        const perm = await LocalNotifications.checkPermissions();
+        setPermissionStatus(perm.display === "granted" ? "granted" : "denied");
+      } catch {
+        // ignore
+      }
+    })();
+  }, []);
+
   const PRAYER_SETTINGS_STORAGE_KEY = "qweensalon:prayer_notifications";
   const PRAYER_NOTIFICATION_ID_BASE = 900_000;
 
@@ -291,16 +303,22 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
       prayers.forEach((p, idx) => {
         const timeStr = String(timings[p.key] || "");
+        if (!timeStr) return;
+        
         const at = parseTimeToDate(timeStr, d);
+        // remindAt is exactly 10 minutes before 'at'
         const remindAt = new Date(at.getTime() - 10 * 60_000);
+        
         if (remindAt.getTime() <= now + 5_000) return;
+        
         notifications.push({
           id: makeId(d, idx),
           title: p.title,
-          body: "10 menit lagi waktu sholat.",
+          body: `${p.key === "Fajr" ? "Subuh" : p.key} akan tiba dalam 10 menit.`,
           channelId: ANDROID_PRAYER_NOTIFICATION_CHANNEL_ID,
           schedule: { at: remindAt },
           extra: { type: "prayer", date: key, prayer: p.key },
+          sound: ANDROID_PRAYER_NOTIFICATION_SOUND,
         });
       });
     }

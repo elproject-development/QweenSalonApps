@@ -86,7 +86,7 @@ export function Layout({ children }: LayoutProps) {
   const navItems = useMemo(() => [
     { label: "Dashboard", href: "/", icon: Home },
     { label: "Kasir", href: "/kasir", icon: Receipt },
-    { label: "Janji", href: "/janji", icon: Calendar },
+    { label: "Reservasi", href: "/janji", icon: Calendar },
     { label: "Pelanggan", href: "/pelanggan", icon: Users },
   ], []);
 

@@ -14,6 +14,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/components/theme-provider";
 import { useNotifications } from "@/components/notification-provider";
 import { Capacitor, registerPlugin } from "@capacitor/core";
+import { Filesystem, Directory } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
 
 export default function Setting() {
   const [isDeleting, setIsDeleting] = useState(false);
@@ -394,8 +396,25 @@ export default function Setting() {
 
       const dateStr = new Date().toISOString().split("T")[0];
       const fileName = `Laporan_Transaksi_Salon_${dateStr}.xlsx`;
-      
-      XLSX.writeFile(wb, fileName);
+
+      if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android") {
+        const base64 = XLSX.write(wb, { type: "base64", bookType: "xlsx" });
+        await Filesystem.writeFile({
+          path: fileName,
+          data: base64,
+          directory: Directory.Documents,
+        });
+
+        const { uri } = await Filesystem.getUri({ path: fileName, directory: Directory.Documents });
+        await Share.share({
+          title: fileName,
+          text: "Laporan transaksi",
+          url: uri,
+          dialogTitle: "Bagikan / Buka Excel",
+        });
+      } else {
+        XLSX.writeFile(wb, fileName);
+      }
       
       toast({
         title: "Berhasil",

@@ -122,7 +122,7 @@ export function Janji() {
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Janji Temu</h1>
+          <h1 className="text-xl font-bold tracking-tight">Reservasi</h1>
           <p className="text-muted-foreground text-xs">Kelola jadwal kunjungan pelanggan</p>
         </div>
         <Button onClick={() => setShowDialog(true)} size="sm" className="gap-2 h-8 text-xs sm:h-9 sm:text-sm">
