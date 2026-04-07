@@ -4,6 +4,6 @@ import App from "./App";
 import "./index.css";
 
 // Configure API base URL
-setBaseUrl(null);
+setBaseUrl((import.meta as any).env?.VITE_API_URL ?? null);
 
 createRoot(document.getElementById("root")!).render(<App />);

@@ -11,10 +11,12 @@ import { useToast } from "@/hooks/use-toast";
 import { ReceiptPrint, type ReceiptData } from "@/components/receipt/receipt-print";
 import type { SalonService } from "@/lib/api-client-react";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useNotifications } from "@/components/notification-provider";
 
 export function Kasir() {
   const { toast } = useToast();
   const isMobile = useIsMobile();
+  const { settings: notifSettings, sendNotification, permissionStatus } = useNotifications();
 
   const { data: services } = useListServices();
   const { data: customers } = useListCustomers();
@@ -101,6 +103,10 @@ export function Kasir() {
             title: "Transaksi berhasil!", 
             variant: "success" 
           });
+
+          if (notifSettings.payments && permissionStatus === "granted") {
+            sendNotification("Pembayaran berhasil", { body: `Total: ${formatRupiah(total)}` } as any);
+          }
 
           const receipt: ReceiptData = {
             receiptNumber: data.receiptNumber,
@@ -225,7 +231,7 @@ export function Kasir() {
                 <SelectTrigger className="h-9">
                   <SelectValue placeholder="Pilih pelanggan" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-h-64">
                   <SelectItem value="general">Pelanggan Umum</SelectItem>
                   {customers?.map(c => <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>)}
                 </SelectContent>

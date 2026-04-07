@@ -3,6 +3,10 @@ import { useToast } from "@/hooks/use-toast";
 import { Capacitor } from "@capacitor/core";
 import { LocalNotifications } from "@capacitor/local-notifications";
 
+const ANDROID_NOTIFICATION_CHANNEL_ID = "qween_default_v2";
+const ANDROID_NOTIFICATION_CHANNEL_NAME = "QweenSalon Notifications";
+const ANDROID_NOTIFICATION_SOUND = "notif";
+
 interface NotificationSettings {
   appointments: boolean;
   payments: boolean;
@@ -37,6 +41,24 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     setSettingsState(newSettings);
     localStorage.setItem("qween-salon-notifications", JSON.stringify(newSettings));
   };
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    void (async () => {
+      try {
+        await LocalNotifications.createChannel({
+          id: ANDROID_NOTIFICATION_CHANNEL_ID,
+          name: ANDROID_NOTIFICATION_CHANNEL_NAME,
+          sound: ANDROID_NOTIFICATION_SOUND,
+          importance: 5,
+          visibility: 1,
+          vibration: true,
+        } as any);
+      } catch {
+        // ignore
+      }
+    })();
+  }, []);
 
   const requestPermission = async () => {
     if (Capacitor.isNativePlatform()) {
@@ -96,6 +118,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
             id: Date.now() % 2147483647,
             title,
             body: (options as any)?.body,
+            channelId: ANDROID_NOTIFICATION_CHANNEL_ID,
             schedule: { at: new Date(Date.now() + 250) },
           },
         ],
@@ -156,6 +179,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           id: safeIntId(a.id),
           title: "Pengingat Janji Temu",
           body,
+          channelId: ANDROID_NOTIFICATION_CHANNEL_ID,
           schedule: { at: new Date(remindAtMs) },
         };
       })

@@ -1390,7 +1390,10 @@ app.get("/api/dashboard/revenue-chart", async (req, res) => {
 
     const isoDate = (d: Date) => d.toISOString().slice(0, 10);
     const monthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const monthLabel = (d: Date) => d.toLocaleString(undefined, { month: "short" });
+    const monthLabel = (d: Date) => {
+      const labels = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+      return labels[d.getMonth()] ?? String(d.getMonth() + 1);
+    };
 
     const txResult = await trySelect<any>(
       context,

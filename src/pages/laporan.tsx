@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
-  ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, Legend
+  ResponsiveContainer, XAxis, YAxis, CartesianGrid, Legend
 } from "recharts";
 import { TrendingUp, TrendingDown, DollarSign, BarChart3 } from "lucide-react";
 import { endOfDay, endOfMonth, endOfWeek, endOfYear, isWithinInterval, parseISO, startOfDay, startOfMonth, startOfWeek, startOfYear } from "date-fns";
@@ -128,8 +128,6 @@ export function Laporan() {
 
   const loadingTop = loadingTransactions;
 
-  const formatTooltipValue = (value: number) => formatRupiah(value);
-
   const monthLabels = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
   const formatXAxisLabel = (label: any) => {
     if (label == null) return "";
@@ -159,7 +157,7 @@ export function Laporan() {
           <p className="text-muted-foreground text-xs">Analisis pendapatan dan pengeluaran</p>
         </div>
         <Select value={period} onValueChange={(v: any) => setPeriod(v)}>
-          <SelectTrigger className="w-[160px]">
+          <SelectTrigger className="w-full sm:w-[160px]">
             <SelectValue placeholder="Pilih periode" />
           </SelectTrigger>
           <SelectContent>
@@ -172,7 +170,7 @@ export function Laporan() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         <Card className="bg-primary/5 border-primary/20">
           <CardContent className="pt-4 pb-4">
             <p className="text-xs text-muted-foreground">Pendapatan</p>
@@ -195,7 +193,7 @@ export function Laporan() {
             )}
             <div className="flex items-center gap-1 mt-1">
               <TrendingDown className="w-3 h-3 text-red-600" />
-              <span className="text-xs text-red-600">Biaya operasional</span>
+              <span className="text-xs text-red-600">Operasional</span>
             </div>
           </CardContent>
         </Card>
@@ -252,10 +250,10 @@ export function Laporan() {
       {/* Charts */}
       <Card>
         <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <CardTitle className="text-sm font-semibold">Grafik Keuangan</CardTitle>
             <Select value={chartPeriod} onValueChange={(v: any) => setChartPeriod(v)}>
-              <SelectTrigger className="h-8 w-[100px] text-xs">
+              <SelectTrigger className="h-8 w-full sm:w-[140px] text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -276,39 +274,27 @@ export function Laporan() {
                 margin={{ 
                   top: 10, 
                   right: isMobile ? 5 : 10, 
-                  left: isMobile ? -20 : 0, 
+                  left: 0, 
                   bottom: 0 
                 }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                 <XAxis 
                   dataKey="label" 
-                  tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                  tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", textAnchor: "middle" }}
                   axisLine={false}
                   tickLine={false}
                   tickFormatter={formatXAxisLabel}
+                  tickMargin={10}
+                  padding={{ left: 12, right: 12 }}
+                  minTickGap={10}
                 />
-                <YAxis 
-                  hide={isMobile} 
-                  tickFormatter={(v) => `${(v/1000).toFixed(0)}K`} 
-                  tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip 
-                  formatter={formatTooltipValue} 
-                  contentStyle={{ 
-                    backgroundColor: "hsl(var(--card))", 
-                    border: "1px solid hsl(var(--border))", 
-                    borderRadius: "8px", 
-                    fontSize: "12px" 
-                  }} 
-                />
+                <YAxis hide />
                 <Area 
                   type="monotone" 
                   dataKey="revenue" 
-                  stroke="hsl(var(--primary))" 
-                  fill="hsl(var(--primary) / 0.1)" 
+                  stroke="#16a34a" 
+                  fill="rgba(22, 163, 74, 0.12)" 
                   name="Pendapatan" 
                   strokeWidth={2} 
                 />

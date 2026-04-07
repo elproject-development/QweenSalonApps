@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
 import { formatRupiah, formatDate } from "@/lib/format";
 import QRCode from "qrcode";
+import { Capacitor } from "@capacitor/core";
+import { Printer } from "@capgo/capacitor-printer";
 
 export interface ReceiptData {
   receiptNumber: string;
@@ -39,31 +41,77 @@ const PAYMENT_LABEL: Record<string, string> = {
  * - @page size di dalam iframe berlaku hanya untuk iframe tersebut
  */
 export async function printReceipt(data: ReceiptData): Promise<void> {
-  // Gunakan window.open untuk isolasi total di Android Chrome
-  // Ini mencegah Android mencetak halaman utama (riwayat transaksi)
-  const printWindow = window.open("", "_blank", "width=800,height=800");
-  
-  if (!printWindow) {
-    alert("Gagal membuka jendela cetak. Pastikan popup tidak diblokir.");
+  const html = await buildCompleteHTML(data);
+
+  // Android WebView/Capacitor sering memblokir popup window.open().
+  // Selain itu, window.print() sering tidak memunculkan dialog print di WebView.
+  // Untuk native platform, buka struk di browser sistem (Chrome) supaya user bisa print.
+  if (Capacitor.isNativePlatform()) {
+    await Printer.printHtml({ name: "Struk", html });
     return;
   }
 
-  const html = await buildCompleteHTML(data);
-  
+  // Web: coba window.open untuk isolasi.
+  const printWindow = window.open("", "_blank", "width=800,height=800");
+  if (!printWindow) {
+    // Fallback jika popup diblokir
+    await printViaIframe(html);
+    return;
+  }
+
   printWindow.document.open();
   printWindow.document.write(html);
   printWindow.document.close();
 
-  // Tunggu sebentar agar Poppins font dan CSS ter-render
+  // Tunggu sebentar agar font dan CSS ter-render
   printWindow.onload = () => {
     printWindow.focus();
-    // Berikan sedikit jeda tambahan untuk Android
     setTimeout(() => {
       printWindow.print();
-      // Jangan langsung close, biarkan user berinteraksi dengan dialog print
-      // printWindow.close(); 
     }, 500);
   };
+}
+
+async function printViaIframe(html: string): Promise<void> {
+  const iframe = document.createElement("iframe");
+  iframe.style.position = "fixed";
+  iframe.style.right = "0";
+  iframe.style.bottom = "0";
+  iframe.style.width = "0";
+  iframe.style.height = "0";
+  iframe.style.border = "0";
+  iframe.style.opacity = "0";
+  iframe.setAttribute("aria-hidden", "true");
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentDocument;
+  const win = iframe.contentWindow;
+  if (!doc || !win) {
+    document.body.removeChild(iframe);
+    throw new Error("Print iframe is not available");
+  }
+
+  doc.open();
+  doc.write(html);
+  doc.close();
+
+  await new Promise<void>((resolve) => {
+    iframe.onload = () => resolve();
+    // Fallback: kalau onload tidak terpanggil (kadang di WebView), lanjut saja
+    setTimeout(() => resolve(), 700);
+  });
+
+  win.focus();
+  win.print();
+
+  // Cleanup setelah beberapa detik (biarkan dialog print muncul dulu)
+  setTimeout(() => {
+    try {
+      document.body.removeChild(iframe);
+    } catch {
+      // ignore
+    }
+  }, 3000);
 }
 
 // ─────────────────────────────────────────────
