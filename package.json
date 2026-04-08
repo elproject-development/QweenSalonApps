@@ -4,12 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --config vite.config.ts --host 0.0.0.0",
+    "dev": "vite --config vite.config.cjs --host 0.0.0.0",
     "api:dev": "set NODE_ENV=development && set PORT=3002 && tsx watch --clear-screen=false ./api/index.ts",
     "dev:full": "concurrently -n web,api -c blue,green \"pnpm run dev\" \"pnpm run api:dev\"",
-    "build": "tsc && vite build",
+    "build": "tsc && vite build --config vite.config.cjs",
     "api:build": "tsc -p api/tsconfig.json",
-    "preview": "vite preview",
+    "preview": "vite preview --config vite.config.cjs",
     "typecheck": "tsc --noEmit",
     "api:start": "set NODE_ENV=production && set PORT=3002 && tsx ./api/index.ts"
   },

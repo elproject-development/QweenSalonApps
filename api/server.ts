@@ -470,6 +470,74 @@ app.delete("/api/appointments/:id", async (req, res) => {
   }
 });
 
+function canonicalizeCategoryName(categoryName: unknown) {
+  const trimmed = typeof categoryName === "string" ? categoryName.trim() : "";
+  if (!trimmed) return "";
+
+  const key = trimmed.toLowerCase();
+  if (key === "nail care") return "Nail Art";
+  if (key === "nail art") return "Nail Art";
+  if (key === "skin care") return "Perawatan Wajah";
+  if (key === "perawatan wajah") return "Perawatan Wajah";
+  if (key === "body treatment") return "Lainnya";
+  return trimmed;
+}
+
+async function resolveCategoryIdByName(categoryName: unknown) {
+  if (typeof categoryName !== "string") return null;
+  const canonical = canonicalizeCategoryName(categoryName);
+  if (!canonical) return null;
+
+  const { data: exact } = await supabase
+    .from("categories")
+    .select("id")
+    .eq("name", canonical)
+    .limit(1);
+
+  if (exact && exact.length > 0) return exact[0].id;
+
+  const { data: insensitive } = await supabase
+    .from("categories")
+    .select("id")
+    .ilike("name", `${canonical}%`)
+    .limit(1);
+
+  if (insensitive && insensitive.length > 0) return insensitive[0].id;
+  return null;
+}
+
+async function resolveOrCreateCategoryIdByName(categoryName: unknown) {
+  if (typeof categoryName !== "string") return null;
+  const canonical = canonicalizeCategoryName(categoryName);
+  if (!canonical) return null;
+
+  const existingId = await resolveCategoryIdByName(canonical);
+  if (existingId) return existingId;
+
+  const { data: upserted, error: upsertError } = await supabase
+    .from("categories")
+    .upsert({ name: canonical }, { onConflict: "name" })
+    .select("id")
+    .limit(1);
+
+  if (!upsertError && upserted && upserted.length > 0) return upserted[0].id;
+
+  const { data: inserted, error: insertError } = await supabase
+    .from("categories")
+    .insert({ name: canonical })
+    .select("id")
+    .limit(1);
+
+  if (!insertError && inserted && inserted.length > 0) return inserted[0].id;
+  return await resolveCategoryIdByName(canonical);
+}
+
+function toDisplayCategoryName(categoryName: unknown) {
+  const trimmed = typeof categoryName === "string" ? categoryName.trim() : "";
+  if (!trimmed) return "";
+  return canonicalizeCategoryName(trimmed);
+}
+
 // Services routes
 app.get("/api/services", async (req, res) => {
   try {
@@ -481,14 +549,10 @@ app.get("/api/services", async (req, res) => {
     
     // Handle category filtering: convert category name to category_id
     if (category && category !== "all" && typeof category === "string") {
-      const { data: categories } = await supabase
-        .from("categories")
-        .select("id")
-        .eq("name", category)
-        .limit(1);
-      
-      if (categories && categories.length > 0) {
-        query = query.eq("category_id", categories[0].id);
+      const categoryId = await resolveCategoryIdByName(category);
+
+      if (categoryId) {
+        query = query.eq("category_id", categoryId);
       } else {
         // If category not found, return empty array
         return res.json([]);
@@ -522,7 +586,7 @@ app.get("/api/services", async (req, res) => {
     // Map database columns to frontend format
     const mapped = (data ?? []).map((s: any) => ({
       ...s,
-      category: s.category_id ? categoryNameById.get(String(s.category_id)) ?? "" : "",
+      category: s.category_id ? toDisplayCategoryName(categoryNameById.get(String(s.category_id)) ?? "") : "",
       duration: s.duration_minutes, // Map duration_minutes to duration
       isActive: s.is_active ?? true,
     }));
@@ -547,15 +611,8 @@ app.post("/api/services", async (req, res) => {
     
     // Handle category: convert category string to category_id
     if (category && typeof category === "string") {
-      const { data: categories } = await supabase
-        .from("categories")
-        .select("id")
-        .eq("name", category)
-        .limit(1);
-      
-      if (categories && categories.length > 0) {
-        payload.category_id = categories[0].id;
-      }
+      const categoryId = await resolveOrCreateCategoryIdByName(category);
+      if (categoryId) payload.category_id = categoryId;
     } else if (req.body.category_id) {
       payload.category_id = req.body.category_id;
     }
@@ -580,7 +637,7 @@ app.post("/api/services", async (req, res) => {
     
     res.json({
       ...row,
-      category: categoryName,
+      category: toDisplayCategoryName(categoryName),
       duration: row.duration_minutes,
       isActive: row.is_active ?? true,
     });
@@ -603,15 +660,8 @@ app.put("/api/services/:id", async (req, res) => {
     
     // Handle category: convert category string to category_id
     if (category && typeof category === "string") {
-      const { data: categories } = await supabase
-        .from("categories")
-        .select("id")
-        .eq("name", category)
-        .limit(1);
-      
-      if (categories && categories.length > 0) {
-        payload.category_id = categories[0].id;
-      }
+      const categoryId = await resolveOrCreateCategoryIdByName(category);
+      if (categoryId) payload.category_id = categoryId;
     } else if (req.body.category_id !== undefined) {
       payload.category_id = req.body.category_id;
     }
@@ -640,7 +690,7 @@ app.put("/api/services/:id", async (req, res) => {
     
     res.json({
       ...row,
-      category: categoryName,
+      category: toDisplayCategoryName(categoryName),
       duration: row.duration_minutes,
       isActive: row.is_active ?? true,
     });

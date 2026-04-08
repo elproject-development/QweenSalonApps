@@ -15,7 +15,44 @@ import { Textarea } from "@/components/ui/textarea";
 import { Plus, Scissors, Clock, Pencil, Trash2, Tag } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-const CATEGORIES = ["Potong Rambut", "Perawatan Rambut", "Nail Art", "Perawatan Wajah","Eyelash Extension", "Lainnya"];
+const CATEGORIES = [
+  "Potong Rambut",
+  "Perawatan Rambut",
+  "Nail Art",
+  "Perawatan Wajah",
+  "Eyelash Extension",
+  "Lainnya",
+];
+
+function toDisplayCategoryName(category: string | null | undefined) {
+  const trimmed = String(category ?? "").trim();
+  if (!trimmed) return "";
+  if (trimmed === "Skin Care") return "Perawatan Wajah";
+  if (trimmed === "Nail Care") return "Nail Art";
+  if (trimmed === "Body Treatment") return "Lainnya";
+  return trimmed;
+}
+
+function normalizeCategory(category: string | null | undefined) {
+  const trimmed = String(category ?? "").trim();
+  const display = toDisplayCategoryName(trimmed);
+  return display || "Lainnya";
+}
+
+function toCanonicalCategoryName(category: string) {
+  const trimmed = String(category ?? "").trim();
+  if (!trimmed) return "";
+
+  const key = trimmed.toLowerCase();
+  if (key === "nail care") return "Nail Art";
+  if (key === "skin care") return "Perawatan Wajah";
+  if (key === "nail art") return "Nail Art";
+  if (key === "perawatan wajah") return "Perawatan Wajah";
+  if (key === "perawatan rambut") return "Perawatan Rambut";
+  if (key === "potong rambut") return "Potong Rambut";
+  if (key === "body treatment") return "Lainnya";
+  return trimmed;
+}
 
 interface ServiceForm {
   name: string;
@@ -43,6 +80,13 @@ export function Layanan() {
   const updateService = useUpdateService();
   const deleteService = useDeleteService();
 
+  const categoryOptions = Array.from(
+    new Set([...
+      CATEGORIES,
+      ...(services ?? []).map((s) => normalizeCategory(s?.category)).filter(Boolean),
+    ]),
+  );
+
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getListServicesQueryKey() });
 
   const openCreate = () => {
@@ -55,7 +99,7 @@ export function Layanan() {
     setEditId(s.id);
     setForm({
       name: s.name,
-      category: s.category,
+      category: normalizeCategory(s.category),
       price: formatNumber(s.price),
       duration: String(s.duration),
       description: s.description ?? "",
@@ -72,7 +116,7 @@ export function Layanan() {
     try {
       const data = {
         name: form.name,
-        category: form.category,
+        category: toCanonicalCategoryName(form.category),
         price: parseNumber(form.price),
         duration: parseInt(form.duration),
         description: form.description || null,
@@ -104,8 +148,9 @@ export function Layanan() {
 
   // Group by category
   const grouped = (services ?? []).reduce<Record<string, typeof services>>((acc, s) => {
-    if (!acc[s!.category]) acc[s!.category] = [];
-    acc[s!.category]!.push(s);
+    const category = normalizeCategory(s?.category);
+    if (!acc[category]) acc[category] = [];
+    acc[category]!.push(s);
     return acc;
   }, {});
 
@@ -129,7 +174,7 @@ export function Layanan() {
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="all">Semua Kategori</SelectItem>
-          {CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+          {categoryOptions.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
         </SelectContent>
       </Select>
 
@@ -206,7 +251,7 @@ export function Layanan() {
                   <SelectValue placeholder="Pilih kategori" />
                 </SelectTrigger>
                 <SelectContent>
-                  {CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  {categoryOptions.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
