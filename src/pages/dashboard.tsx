@@ -1,4 +1,4 @@
-import { useGetDashboardSummary, useGetRevenueChart, useGetTopServices, useGetRecentTransactions, useGetStaffReports, useListStaff } from "@/lib/api-client-react";
+import { useGetDashboardSummary, useGetRevenueChart, useGetTopServices, useGetRecentTransactions } from "@/lib/api-client-react";
 import { formatRupiah } from "@/lib/format";
 import { mockSummary, mockChartData, mockTopServices, mockRecentTransactions } from "@/lib/mock-data";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,15 +12,12 @@ import { useIsMobile } from "@/hooks/use-mobile";
 export function Dashboard() {
   const isMobile = useIsMobile();
   const [period, setPeriod] = useState<"today" | "week" | "month" | "year">("today");
-  const [selectedStaffId, setSelectedStaffId] = useState<string>("all");
   
   const { data: summary, isLoading: loadingSummary } = useGetDashboardSummary({ period });
   const chartPeriod = period === "today" ? "week" : period === "month" ? "year" : period;
   const { data: chartData = [], isLoading: loadingChart } = useGetRevenueChart({ period: chartPeriod });
   const { data: topServices = [], isLoading: loadingTop } = useGetTopServices();
   const { data: recentTransactions = [], isLoading: loadingRecent } = useGetRecentTransactions({ limit: 5 });
-  const { data: staffList = [] } = useListStaff();
-  const { data: staffReports = [], isLoading: loadingStaffReports } = useGetStaffReports();
 
   // Use empty arrays/objects as fallback instead of mock data when data is explicitly empty
   const displaySummary = summary || { revenue: 0, transactionCount: 0, customerCount: 0, appointmentCount: 0 };
@@ -478,32 +475,17 @@ export function Dashboard() {
           <h1 className="text-xl font-bold tracking-tight">Ringkasan Bisnis</h1>
           <p className="text-muted-foreground text-xs">Pantau performa Glam Studio Anda hari ini.</p>
         </div>
-        <div className="flex flex-col sm:flex-row gap-2">
-          <Select value={period} onValueChange={(val: any) => setPeriod(val)}>
-            <SelectTrigger className="w-full sm:w-[180px]">
-              <SelectValue placeholder="Pilih periode" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="today">Hari Ini</SelectItem>
-              <SelectItem value="week">Minggu Ini</SelectItem>
-              <SelectItem value="month">Bulan Ini</SelectItem>
-              <SelectItem value="year">Tahun Ini</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={selectedStaffId} onValueChange={setSelectedStaffId}>
-            <SelectTrigger className="w-full sm:w-[180px]">
-              <SelectValue placeholder="Pilih staff" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Semua Staff</SelectItem>
-              {staffList.map((staff) => (
-                <SelectItem key={staff.id} value={staff.id}>
-                  {staff.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <Select value={period} onValueChange={(val: any) => setPeriod(val)}>
+          <SelectTrigger className="w-full sm:w-[180px]">
+            <SelectValue placeholder="Pilih periode" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="today">Hari Ini</SelectItem>
+            <SelectItem value="week">Minggu Ini</SelectItem>
+            <SelectItem value="month">Bulan Ini</SelectItem>
+            <SelectItem value="year">Tahun Ini</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {/* KPI Cards */}
@@ -609,63 +591,30 @@ export function Dashboard() {
           </CardContent>
         </Card>
 
-        <div className="grid grid-cols-1 gap-4 sm:gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Layanan Terpopuler</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {loadingTop ? (
-                  Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)
-                ) : Array.isArray(displayTopServices) && displayTopServices.length > 0 ? (
-                  displayTopServices.map((service) => (
-                    <div key={service.serviceId} className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium text-xs md:text-sm">{service.serviceName}</p>
-                        <p className="text-[10px] md:text-xs text-muted-foreground">{service.count} kali</p>
-                      </div>
-                      <div className="text-xs md:text-sm font-semibold">{formatRupiah(service.revenue)}</div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Layanan Terpopuler</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {loadingTop ? (
+                Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)
+              ) : Array.isArray(displayTopServices) && displayTopServices.length > 0 ? (
+                displayTopServices.map((service) => (
+                  <div key={service.serviceId} className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-xs md:text-sm">{service.serviceName}</p>
+                      <p className="text-[10px] md:text-xs text-muted-foreground">{service.count} kali</p>
                     </div>
-                  ))
-                ) : (
-                  <div className="text-center text-xs md:text-sm text-muted-foreground py-4">Belum ada data layanan</div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Performa Staff</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {loadingStaffReports ? (
-                  Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)
-                ) : Array.isArray(staffReports) && staffReports.length > 0 ? (
-                  staffReports
-                    .filter((staff) => selectedStaffId === "all" || String(staff.staffId) === String(selectedStaffId))
-                    .map((staff) => (
-                      <div key={staff.staffId} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                        <div>
-                          <p className="font-medium text-xs md:text-sm">{staff.staffName}</p>
-                          <p className="text-[10px] md:text-xs text-muted-foreground">
-                            {staff.totalTransactions} transaksi · {staff.totalServices} layanan
-                          </p>
-                        </div>
-                        <div className="text-xs md:text-sm font-semibold text-primary">
-                          {formatRupiah(staff.totalRevenue)}
-                        </div>
-                      </div>
-                    ))
-                ) : (
-                  <div className="text-center text-xs md:text-sm text-muted-foreground py-4">Belum ada data staff</div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+                    <div className="text-xs md:text-sm font-semibold">{formatRupiah(service.revenue)}</div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center text-xs md:text-sm text-muted-foreground py-4">Belum ada data layanan</div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
