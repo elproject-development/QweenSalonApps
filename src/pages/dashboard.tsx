@@ -1,4 +1,4 @@
-import { useGetDashboardSummary, useGetRevenueChart, useGetTopServices, useGetRecentTransactions } from "@/lib/api-client-react";
+import { useGetDashboardSummary, useGetRevenueChart, useGetTopServices, useGetRecentTransactions, useGetStaffReports, useListStaff } from "@/lib/api-client-react";
 import { formatRupiah } from "@/lib/format";
 import { mockSummary, mockChartData, mockTopServices, mockRecentTransactions } from "@/lib/mock-data";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,12 +12,15 @@ import { useIsMobile } from "@/hooks/use-mobile";
 export function Dashboard() {
   const isMobile = useIsMobile();
   const [period, setPeriod] = useState<"today" | "week" | "month" | "year">("today");
+  const [selectedStaffId, setSelectedStaffId] = useState<string>("all");
   
   const { data: summary, isLoading: loadingSummary } = useGetDashboardSummary({ period });
   const chartPeriod = period === "today" ? "week" : period === "month" ? "year" : period;
   const { data: chartData = [], isLoading: loadingChart } = useGetRevenueChart({ period: chartPeriod });
   const { data: topServices = [], isLoading: loadingTop } = useGetTopServices();
   const { data: recentTransactions = [], isLoading: loadingRecent } = useGetRecentTransactions({ limit: 5 });
+  const { data: staffList = [] } = useListStaff();
+  const { data: staffReports = [], isLoading: loadingStaffReports } = useGetStaffReports();
 
   // Use empty arrays/objects as fallback instead of mock data when data is explicitly empty
   const displaySummary = summary || { revenue: 0, transactionCount: 0, customerCount: 0, appointmentCount: 0 };
@@ -116,6 +119,13 @@ export function Dashboard() {
     }
 
     if (chartPeriod === "week") {
+      // For weekly chart (period "week"), show M1, M2, M3... format
+      if (s.toLowerCase().startsWith("minggu")) {
+        const num = s.replace(/^minggu\s*/i, "");
+        return `M${num}`;
+      }
+      
+      // For daily chart (period "today"), convert day labels
       const dayIdx = (() => {
         const cleaned = String(s).trim();
 
@@ -150,7 +160,7 @@ export function Dashboard() {
     return s;
   };
 
-  const formatTooltipLabel = (label: any) => {
+  const formatTooltipLabel = (label: any, payload?: any) => {
     if (label == null) return "";
     if (chartPeriod === "year") {
       const idx = monthIndexFromLabel(label);
@@ -160,14 +170,48 @@ export function Dashboard() {
 
     if (chartPeriod !== "week") return formatXAxisLabel(label);
 
-    const idx = dayLabels.findIndex((d) => String(label).trim().toLowerCase() === d.toLowerCase());
-    if (idx >= 0) return dayLabelsFull[idx] ?? String(label);
-    return formatXAxisLabel(label);
+    // For daily chart (period "today"), show day with date
+    if (payload?.date) {
+      const date = new Date(payload.date);
+      if (!Number.isNaN(date.getTime())) {
+        const dayIdx = dayLabels.findIndex((d) => String(label).trim().toLowerCase() === d.toLowerCase());
+        const dayName = dayIdx >= 0 ? dayLabelsFull[dayIdx] : String(label);
+        const dateNum = date.getDate();
+        const monthName = monthLabels[date.getMonth()];
+        const year = date.getFullYear();
+        return `${dayName}, ${dateNum} ${monthName} ${year}`;
+      }
+    }
+
+    // For weekly chart (period "week"), show week label with date range
+    if (payload?.dateRange) {
+      const startDate = new Date(payload.dateRange.start);
+      const endDate = new Date(payload.dateRange.end);
+      if (!Number.isNaN(startDate.getTime()) && !Number.isNaN(endDate.getTime())) {
+        const startDay = startDate.getDate();
+        const endDay = endDate.getDate();
+        const startMonth = monthLabels[startDate.getMonth()];
+        const endMonth = monthLabels[endDate.getMonth()];
+        const year = startDate.getFullYear();
+        
+        if (startMonth === endMonth) {
+          if (startDay === endDay) {
+            return `${label} (${startDay} ${startMonth} ${year})`;
+          }
+          return `${label} (${startDay} - ${endDay} ${startMonth} ${year})`;
+        } else {
+          return `${label} (${startDay} ${startMonth} - ${endDay} ${endMonth} ${year})`;
+        }
+      }
+    }
+    return String(label);
   };
 
-  const normalizedChartData = useMemo(() => {
-    if (chartPeriod !== "year") return displayChartData;
-
+  // Year labels for 8 years (2026-2034)
+  const yearLabels = ["2026", "2027", "2028", "2029", "2030", "2031", "2032", "2033", "2034"];
+  
+  // Monthly chart data (12 months) - for period "month"
+  const monthlyChartData = useMemo(() => {
     const base = monthLabels.map((m) => ({ label: m, revenue: 0 }));
     for (const p of displayChartData as Array<any>) {
       const idx = monthIndexFromLabel(p?.label);
@@ -175,12 +219,92 @@ export function Dashboard() {
       base[idx] = { label: monthLabels[idx], revenue: Number(p?.revenue ?? 0) || 0 };
     }
     return base;
-  }, [chartPeriod, displayChartData]);
+  }, [displayChartData]);
 
-  const normalizedWeekChartData = useMemo(() => {
+  // Yearly chart data (8 years) - for period "year"
+  const normalizedYearlyChartData = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    
+    // Build 8 years of data
+    const base = yearLabels.map((year) => ({
+      label: year,
+      revenue: 0,
+      year: parseInt(year)
+    }));
+
+    // Aggregate revenue by year from displayChartData (which contains monthly data)
+    for (const p of (displayChartData as Array<any>) || []) {
+      const raw = p?.label;
+      if (raw == null) continue;
+      
+      const cleaned = String(raw).trim();
+      
+      // Try to extract year from the label
+      // Labels could be "Jan", "Feb", etc. or "2026-01", "2026-02", etc.
+      let yearIdx = -1;
+      
+      // Check if label contains a year
+      const yearMatch = cleaned.match(/\b(20\d{2})\b/);
+      if (yearMatch) {
+        const yearStr = yearMatch[1];
+        yearIdx = yearLabels.indexOf(yearStr);
+      }
+      
+      // If no year found, assume current year's data
+      if (yearIdx < 0) {
+        yearIdx = yearLabels.indexOf(String(currentYear));
+      }
+      
+      if (yearIdx >= 0) {
+        const rev = Number(p?.revenue ?? 0) || 0;
+        base[yearIdx] = {
+          ...base[yearIdx],
+          revenue: (Number(base[yearIdx].revenue) || 0) + rev
+        };
+      }
+    }
+
+    // Hide future years by setting revenue to null
+    const currentYearIdx = yearLabels.indexOf(String(currentYear));
+    return base.map((item, idx) => ({
+      ...item,
+      revenue: idx <= currentYearIdx ? item.revenue : null
+    }));
+  }, [displayChartData, yearLabels]);
+
+  // Select which chart data to use for year period
+  const normalizedChartData = useMemo(() => {
+    if (chartPeriod !== "year") return displayChartData;
+    // Use monthly chart for "month" period, yearly chart for "year" period
+    return period === "month" ? monthlyChartData : normalizedYearlyChartData;
+  }, [chartPeriod, period, monthlyChartData, normalizedYearlyChartData, displayChartData]);
+
+  // Calculate dates for each day of current week (Monday to Sunday) - for daily chart
+  const weekDates = useMemo(() => {
+    const today = new Date();
+    const jsDay = today.getDay(); // 0=Sunday, 1=Monday, ..., 6=Saturday
+    const mondayOffset = jsDay === 0 ? -6 : 1 - jsDay;
+    
+    const monday = new Date(today);
+    monday.setDate(today.getDate() + mondayOffset);
+    monday.setHours(0, 0, 0, 0);
+
+    return dayLabels.map((_, idx) => {
+      const date = new Date(monday);
+      date.setDate(monday.getDate() + idx);
+      return date;
+    });
+  }, [dayLabels]);
+
+  // Daily chart data (7 days) - for period "today"
+  const dailyChartData = useMemo(() => {
     if (chartPeriod !== "week") return normalizedChartData;
 
-    const base = dayLabels.map((d) => ({ label: d, revenue: 0 }));
+    const base = dayLabels.map((d, idx) => ({ 
+      label: d, 
+      revenue: 0,
+      date: weekDates[idx].toISOString()
+    }));
 
     for (const p of (displayChartData as Array<any>) || []) {
       const idx = (() => {
@@ -192,13 +316,7 @@ export function Dashboard() {
         if (direct >= 0) return direct;
 
         const enMap: Record<string, number> = {
-          mon: 0,
-          tue: 1,
-          wed: 2,
-          thu: 3,
-          fri: 4,
-          sat: 5,
-          sun: 6,
+          mon: 0, tue: 1, wed: 2, thu: 3, fri: 4, sat: 5, sun: 6,
         };
         const key3 = cleaned.slice(0, 3).toLowerCase();
         if (key3 in enMap) return enMap[key3];
@@ -215,11 +333,143 @@ export function Dashboard() {
 
       if (idx == null) continue;
       const rev = Number(p?.revenue ?? 0) || 0;
-      base[idx] = { label: dayLabels[idx], revenue: (Number(base[idx].revenue) || 0) + rev };
+      base[idx] = { ...base[idx], label: dayLabels[idx], revenue: (Number(base[idx].revenue) || 0) + rev, date: base[idx].date };
     }
 
-    return base;
-  }, [chartPeriod, dayLabels, displayChartData, normalizedChartData]);
+    // Hide bars for future days
+    const jsDay = new Date().getDay();
+    const currentDayIndex = jsDay === 0 ? 6 : jsDay - 1;
+
+    return base.map((item, idx) => ({
+      ...item,
+      revenue: idx <= currentDayIndex ? item.revenue : null
+    }));
+  }, [chartPeriod, dayLabels, displayChartData, normalizedChartData, weekDates]);
+
+  // Calculate 8 weeks (2 months) - for weekly chart
+  const weekLabels = ["Minggu 1", "Minggu 2", "Minggu 3", "Minggu 4", "Minggu 5", "Minggu 6", "Minggu 7", "Minggu 8"];
+  
+  const twoMonthWeekDates = useMemo(() => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = today.getMonth();
+    
+    const weeks = [];
+    for (let w = 0; w < 8; w++) {
+      let startDay: number, m: number, y: number;
+      if (w < 4) {
+        m = month;
+        y = year;
+        startDay = w * 7 + 1;
+      } else {
+        m = month + 1;
+        y = month + 1 > 11 ? year + 1 : year;
+        startDay = (w - 4) * 7 + 1;
+      }
+      
+      const lastDayOfMonth = new Date(y, m + 1, 0).getDate();
+      const endDay = Math.min(startDay + 6, lastDayOfMonth);
+      
+      if (startDay <= lastDayOfMonth) {
+        weeks.push({
+          start: new Date(y, m, startDay),
+          end: new Date(y, m, endDay),
+          weekNum: w + 1
+        });
+      }
+    }
+    return weeks;
+  }, []);
+
+  // Weekly chart data (8 weeks) - for period "week"
+  const weeklyChartData = useMemo(() => {
+    const today = new Date();
+    
+    // Determine current week index (0-7)
+    let currentWeekIdx = 0;
+    for (let i = 0; i < twoMonthWeekDates.length; i++) {
+      const week = twoMonthWeekDates[i];
+      if (today >= week.start && today <= week.end) {
+        currentWeekIdx = i;
+        break;
+      }
+    }
+
+    // Build 8 weeks of data
+    const base = weekLabels.slice(0, twoMonthWeekDates.length).map((label, idx) => {
+      const weekData = twoMonthWeekDates[idx];
+      return {
+        label,
+        revenue: 0,
+        dateRange: weekData ? {
+          start: weekData.start.toISOString(),
+          end: weekData.end.toISOString()
+        } : null
+      };
+    });
+
+    // Map day labels to dates for the past 7 days
+    const jsDay = today.getDay();
+    const dayOfWeek = jsDay === 0 ? 6 : jsDay - 1;
+    
+    const dayLabelToDate = new Map<string, Date>();
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - (dayOfWeek - i));
+      d.setHours(0, 0, 0, 0);
+      dayLabelToDate.set(dayLabels[i], d);
+    }
+
+    // Aggregate revenue by week from displayChartData
+    for (const p of (displayChartData as Array<any>) || []) {
+      const raw = p?.label;
+      if (raw == null) continue;
+      
+      const cleaned = String(raw).trim();
+      
+      const date = dayLabelToDate.get(cleaned);
+      if (!date) {
+        const d = new Date(cleaned);
+        if (Number.isNaN(d.getTime())) continue;
+        
+        for (let i = 0; i < twoMonthWeekDates.length; i++) {
+          const week = twoMonthWeekDates[i];
+          if (d >= week.start && d <= week.end) {
+            const rev = Number(p?.revenue ?? 0) || 0;
+            base[i] = {
+              ...base[i],
+              revenue: (Number(base[i].revenue) || 0) + rev
+            };
+            break;
+          }
+        }
+      } else {
+        for (let i = 0; i < twoMonthWeekDates.length; i++) {
+          const week = twoMonthWeekDates[i];
+          if (date >= week.start && date <= week.end) {
+            const rev = Number(p?.revenue ?? 0) || 0;
+            base[i] = {
+              ...base[i],
+              revenue: (Number(base[i].revenue) || 0) + rev
+            };
+            break;
+          }
+        }
+      }
+    }
+
+    return base.map((item, idx) => ({
+      ...item,
+      revenue: idx <= currentWeekIdx ? item.revenue : null
+    }));
+  }, [displayChartData, twoMonthWeekDates, dayLabels]);
+
+  // Select which chart data to use based on period
+  const normalizedWeekChartData = useMemo(() => {
+    if (chartPeriod !== "week") return normalizedChartData;
+    // Use daily chart for "today" period, weekly chart for "week" period
+    return period === "today" ? dailyChartData : weeklyChartData;
+  }, [chartPeriod, period, dailyChartData, weeklyChartData, normalizedChartData]);
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -228,17 +478,32 @@ export function Dashboard() {
           <h1 className="text-xl font-bold tracking-tight">Ringkasan Bisnis</h1>
           <p className="text-muted-foreground text-xs">Pantau performa Glam Studio Anda hari ini.</p>
         </div>
-        <Select value={period} onValueChange={(val: any) => setPeriod(val)}>
-          <SelectTrigger className="w-full sm:w-[180px]">
-            <SelectValue placeholder="Pilih periode" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="today">Hari Ini</SelectItem>
-            <SelectItem value="week">Minggu Ini</SelectItem>
-            <SelectItem value="month">Bulan Ini</SelectItem>
-            <SelectItem value="year">Tahun Ini</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <Select value={period} onValueChange={(val: any) => setPeriod(val)}>
+            <SelectTrigger className="w-full sm:w-[180px]">
+              <SelectValue placeholder="Pilih periode" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="today">Hari Ini</SelectItem>
+              <SelectItem value="week">Minggu Ini</SelectItem>
+              <SelectItem value="month">Bulan Ini</SelectItem>
+              <SelectItem value="year">Tahun Ini</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={selectedStaffId} onValueChange={setSelectedStaffId}>
+            <SelectTrigger className="w-full sm:w-[180px]">
+              <SelectValue placeholder="Pilih staff" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Staff</SelectItem>
+              {staffList.map((staff) => (
+                <SelectItem key={staff.id} value={staff.id}>
+                  {staff.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -318,7 +583,11 @@ export function Dashboard() {
                     <YAxis hide />
                     <Tooltip
                       cursor={false}
-                      labelFormatter={(value: any) => formatTooltipLabel(value)}
+                      labelFormatter={(value: any, payload: any) => {
+                        // payload is an array, get the first item's payload
+                        const data = Array.isArray(payload) ? payload[0]?.payload : payload?.payload;
+                        return formatTooltipLabel(value, data);
+                      }}
                       formatter={(value: any) => [formatRupiah(Number(value) || 0), "Pendapatan"]}
                       contentStyle={{
                         background: "hsl(var(--background))",
@@ -340,30 +609,63 @@ export function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Layanan Terpopuler</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {loadingTop ? (
-                Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)
-              ) : Array.isArray(displayTopServices) && displayTopServices.length > 0 ? (
-                displayTopServices.map((service) => (
-                  <div key={service.serviceId} className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium text-xs md:text-sm">{service.serviceName}</p>
-                      <p className="text-[10px] md:text-xs text-muted-foreground">{service.count} kali</p>
+        <div className="grid grid-cols-1 gap-4 sm:gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Layanan Terpopuler</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {loadingTop ? (
+                  Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)
+                ) : Array.isArray(displayTopServices) && displayTopServices.length > 0 ? (
+                  displayTopServices.map((service) => (
+                    <div key={service.serviceId} className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium text-xs md:text-sm">{service.serviceName}</p>
+                        <p className="text-[10px] md:text-xs text-muted-foreground">{service.count} kali</p>
+                      </div>
+                      <div className="text-xs md:text-sm font-semibold">{formatRupiah(service.revenue)}</div>
                     </div>
-                    <div className="text-xs md:text-sm font-semibold">{formatRupiah(service.revenue)}</div>
-                  </div>
-                ))
-              ) : (
-                <div className="text-center text-xs md:text-sm text-muted-foreground py-4">Belum ada data layanan</div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+                  ))
+                ) : (
+                  <div className="text-center text-xs md:text-sm text-muted-foreground py-4">Belum ada data layanan</div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Performa Staff</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {loadingStaffReports ? (
+                  Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)
+                ) : Array.isArray(staffReports) && staffReports.length > 0 ? (
+                  staffReports
+                    .filter((staff) => selectedStaffId === "all" || String(staff.staffId) === String(selectedStaffId))
+                    .map((staff) => (
+                      <div key={staff.staffId} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                        <div>
+                          <p className="font-medium text-xs md:text-sm">{staff.staffName}</p>
+                          <p className="text-[10px] md:text-xs text-muted-foreground">
+                            {staff.totalTransactions} transaksi · {staff.totalServices} layanan
+                          </p>
+                        </div>
+                        <div className="text-xs md:text-sm font-semibold text-primary">
+                          {formatRupiah(staff.totalRevenue)}
+                        </div>
+                      </div>
+                    ))
+                ) : (
+                  <div className="text-center text-xs md:text-sm text-muted-foreground py-4">Belum ada data staff</div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

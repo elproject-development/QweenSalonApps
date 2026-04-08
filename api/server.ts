@@ -714,6 +714,7 @@ async function getCleanStaffRow(row: any) {
   if (!row) return null;
   return {
     ...row,
+    id: String(row.id), // Convert to string for consistent comparison
     // Map database specialization back to position for frontend
     position: row.specialization ?? "",
     isActive: row.is_active ?? true,
@@ -1523,6 +1524,98 @@ app.get("/api/dashboard/revenue-chart", async (req, res) => {
     res.json(buckets.map(({ label, revenue, expenses }) => ({ label, revenue, expenses })));
   } catch (err) {
     respond500(res, "GET /api/dashboard/revenue-chart", err);
+  }
+});
+
+// Staff reports route (without rank)
+app.get("/api/reports/staff", async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query as {
+      startDate?: string;
+      endDate?: string;
+    };
+
+    // Get all transactions
+    let query = supabase
+      .from("transactions")
+      .select("id, staff_id, total_amount, items, created_at");
+
+    if (startDate) {
+      query = query.gte("created_at", startDate);
+    }
+    if (endDate) {
+      query = query.lte("created_at", endDate);
+    }
+
+    const { data: transactions, error } = await query;
+
+    if (error) throw error;
+
+    if (!transactions || transactions.length === 0) {
+      return res.json([]);
+    }
+
+    // Get all staff
+    const staffIds = Array.from(
+      new Set(transactions.map((t) => t.staff_id).filter(Boolean))
+    );
+
+    const { data: staffList } = await supabase
+      .from("staff")
+      .select("id, name")
+      .in("id", staffIds);
+
+    const staffMap = new Map(
+      (staffList ?? []).map((s: any) => [String(s.id), s.name])
+    );
+
+    // Aggregate
+    const stats: Record<
+      string,
+      {
+        staffId: string;
+        staffName: string;
+        totalRevenue: number;
+        totalTransactions: number;
+        totalServices: number;
+      }
+    > = {};
+
+    for (const t of transactions) {
+      if (!t.staff_id) continue;
+
+      const sid = String(t.staff_id);
+
+      if (!stats[sid]) {
+        stats[sid] = {
+          staffId: sid,
+          staffName: staffMap.get(sid) || "Unknown",
+          totalRevenue: 0,
+          totalTransactions: 0,
+          totalServices: 0,
+        };
+      }
+
+      stats[sid].totalRevenue += Number(t.total_amount || 0);
+      stats[sid].totalTransactions += 1;
+
+      // Count services from items
+      if (Array.isArray(t.items)) {
+        const totalQty = t.items.reduce(
+          (sum: number, it: any) =>
+            sum + Number(it.quantity || it.qty || 1),
+          0
+        );
+        stats[sid].totalServices += totalQty;
+      }
+    }
+
+    // Convert to array (sorted by revenue, without rank)
+    const result = Object.values(stats).sort((a, b) => b.totalRevenue - a.totalRevenue);
+
+    res.json(result);
+  } catch (err) {
+    respond500(res, "GET /api/reports/staff", err);
   }
 });
 

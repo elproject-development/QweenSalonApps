@@ -146,6 +146,14 @@ export type RecentTransaction = {
   createdAt: string;
 };
 
+export type StaffReport = {
+  staffId: string;
+  staffName: string;
+  totalRevenue: number;
+  totalTransactions: number;
+  totalServices: number;
+};
+
 export function getListServicesQueryKey(params?: { category?: string }) {
   return ["services", params ?? {}] as const;
 }
@@ -339,6 +347,19 @@ export function useCreateTransaction() {
   });
 }
 
+export function useUpdateTransaction() {
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) =>
+      apiFetch<Transaction>(`/transactions/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  });
+}
+
+export function useDeleteTransaction() {
+  return useMutation({
+    mutationFn: ({ id }: { id: number }) => apiFetch<void>(`/transactions/${id}`, { method: "DELETE" }),
+  });
+}
+
 export function useGetDashboardSummary(params: { period: "today" | "week" | "month" | "year" }) {
   return useQuery({
     queryKey: ["dashboard", "summary", params] as const,
@@ -364,5 +385,22 @@ export function useGetRecentTransactions(params: { limit: number }) {
   return useQuery({
     queryKey: ["dashboard", "recent-transactions", params] as const,
     queryFn: () => apiFetch<RecentTransaction[]>(`/dashboard/recent-transactions?limit=${encodeURIComponent(params.limit)}`),
+  });
+}
+
+export function getStaffReportsQueryKey(params?: { startDate?: string; endDate?: string }) {
+  return ["reports", "staff", params ?? {}] as const;
+}
+
+export function useGetStaffReports(params?: { startDate?: string; endDate?: string }) {
+  return useQuery({
+    queryKey: getStaffReportsQueryKey(params),
+    queryFn: () => {
+      const qs = new URLSearchParams();
+      if (params?.startDate) qs.set("startDate", params.startDate);
+      if (params?.endDate) qs.set("endDate", params.endDate);
+      const suffix = qs.toString() ? `?${qs.toString()}` : "";
+      return apiFetch<StaffReport[]>(`/reports/staff${suffix}`);
+    },
   });
 }
