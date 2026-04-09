@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
-  ResponsiveContainer, XAxis, YAxis, CartesianGrid, Legend
+  ResponsiveContainer, XAxis, YAxis, CartesianGrid, Legend, Tooltip
 } from "recharts";
 import { TrendingUp, TrendingDown, DollarSign, BarChart3 } from "lucide-react";
 import { endOfDay, endOfMonth, endOfWeek, endOfYear, isWithinInterval, parseISO, startOfDay, startOfMonth, startOfWeek, startOfYear } from "date-fns";
@@ -20,8 +20,11 @@ export function Laporan() {
   const [period, setPeriod] = useState<"today" | "week" | "month" | "year">("month");
   const [chartPeriod, setChartPeriod] = useState<"week" | "month" | "year">("month");
 
-  const { data: summary, isLoading: loadingSummary } = useGetDashboardSummary({ period });
-  const chartQueryPeriod = chartPeriod === "month" ? "year" : chartPeriod;
+  // For weekly filter, use month period in API call for summary
+  const summaryPeriod = period === "week" ? "month" : period;
+  const { data: summary, isLoading: loadingSummary } = useGetDashboardSummary({ period: summaryPeriod });
+  // For monthly and yearly view, use month period to get 30 days of daily data, then aggregate by month
+  const chartQueryPeriod = (chartPeriod === "month" || chartPeriod === "year") ? "month" : chartPeriod;
   const { data: chartData, isLoading: loadingChart } = useGetRevenueChart({ period: chartQueryPeriod });
   const { data: topServicesAllTime, isLoading: loadingTopAllTime } = useGetTopServices();
   const { data: customers, isLoading: loadingCustomers } = useListCustomers();
@@ -34,7 +37,8 @@ export function Laporan() {
       case "today":
         return { start: startOfDay(now), end: endOfDay(now) };
       case "week":
-        return { start: startOfWeek(now, { weekStartsOn: 1 }), end: endOfWeek(now, { weekStartsOn: 1 }) };
+        // Use monthly range for weekly filter in summary cards
+        return { start: startOfMonth(now), end: endOfMonth(now) };
       case "month":
         return { start: startOfMonth(now), end: endOfMonth(now) };
       case "year":
@@ -129,11 +133,38 @@ export function Laporan() {
   const loadingTop = loadingTransactions;
 
   const monthLabels = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+
+  // Get 6 months starting from March (current month - 1)
+  const getRolling6Months = () => {
+    const now = new Date();
+    const currentMonth = now.getMonth(); // 0-11
+    const currentYear = now.getFullYear();
+
+    const months = [];
+    for (let i = 0; i < 6; i++) {
+      const monthIndex = (currentMonth - 1 + i + 12) % 12;
+      const year = currentMonth - 1 + i < 0 ? currentYear - 1 : (currentMonth - 1 + i >= 12 ? currentYear + 1 : currentYear);
+      months.push({
+        label: monthLabels[monthIndex],
+        monthIndex,
+        year,
+        fullLabel: `${monthLabels[monthIndex]} ${year}`
+      });
+    }
+    return months;
+  };
+
+  const rolling6Months = getRolling6Months();
   const formatXAxisLabel = (label: any) => {
     if (label == null) return "";
     const s = String(label);
 
-    if (chartPeriod === "year" || chartPeriod === "month") {
+    if (chartPeriod === "month") {
+      // For monthly view, labels are day numbers (01, 02, 03, etc.)
+      return s;
+    }
+
+    if (chartPeriod === "year") {
       const m1 = s.match(/^\d{4}-(\d{2})$/);
       if (m1) {
         const idx = Number(m1[1]) - 1;
@@ -151,31 +182,48 @@ export function Laporan() {
 
   const normalizedChartData = useMemo(() => {
     const raw = (chartData ?? []) as Array<any>;
-    if (chartPeriod !== "month" && chartPeriod !== "year") return raw;
+    // For "month" and "year" period, aggregate daily data (DD/MM) by month (last 6 months rolling)
+    if (chartPeriod === "month" || chartPeriod === "year") {
+      const base = rolling6Months.map((m) => ({ label: m.label, revenue: 0, expenses: 0 }));
 
-    const base = monthLabels.map((m) => ({ label: m, revenue: 0, expenses: 0 }));
-    for (const p of raw) {
-      const s = String(p?.label ?? "").trim();
-
-      let idx: number | null = null;
-      const m1 = s.match(/^\d{4}-(\d{2})$/);
-      if (m1) {
-        const n = Number(m1[1]);
-        idx = Number.isFinite(n) && n >= 1 && n <= 12 ? n - 1 : null;
-      } else {
-        const n = Number(s);
-        idx = Number.isFinite(n) && n >= 1 && n <= 12 ? n - 1 : null;
+      // Aggregate daily data by month
+      const monthMap = new Map<number, { revenue: number; expenses: number }>();
+      for (const p of raw) {
+        const s = String(p?.label ?? "").trim();
+        // Parse DD/MM format to get month
+        const parts = s.split('/');
+        if (parts.length === 2) {
+          const day = parseInt(parts[0], 10);
+          const month = parseInt(parts[1], 10);
+          if (month >= 1 && month <= 12) {
+            const idx = month - 1;
+            const existing = monthMap.get(idx) || { revenue: 0, expenses: 0 };
+            monthMap.set(idx, {
+              revenue: existing.revenue + (Number(p?.revenue ?? 0) || 0),
+              expenses: existing.expenses + (Number(p?.expenses ?? 0) || 0),
+            });
+          }
+        }
       }
 
-      if (idx == null) continue;
-      base[idx] = {
-        label: monthLabels[idx],
-        revenue: Number(p?.revenue ?? 0) || 0,
-        expenses: Number(p?.expenses ?? 0) || 0,
-      };
+      // Merge aggregated data into base array (only for months in rolling 6 months)
+      for (const [idx, data] of monthMap.entries()) {
+        const rollingMonth = rolling6Months.find(m => m.monthIndex === idx);
+        if (rollingMonth) {
+          const baseIdx = rolling6Months.indexOf(rollingMonth);
+          base[baseIdx] = {
+            label: rollingMonth.label,
+            revenue: data.revenue,
+            expenses: data.expenses,
+          };
+        }
+      }
+
+      return base;
     }
-    return base;
-  }, [chartData, chartPeriod, monthLabels]);
+    // For "week" period, return as-is
+    return raw;
+  }, [chartData, chartPeriod, rolling6Months]);
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -296,44 +344,84 @@ export function Laporan() {
           {loadingChart ? (
             <Skeleton className="h-48 w-full" />
           ) : (
-            <ResponsiveContainer width="100%" height={200}>
-              <AreaChart 
-                data={normalizedChartData} 
-                margin={{ 
-                  top: 10, 
-                  right: 0, 
-                  left: 0, 
-                  bottom: 0 
+            <ResponsiveContainer width="100%" height={280}>
+              <AreaChart
+                data={normalizedChartData}
+                margin={{
+                  top: 20,
+                  right: 10,
+                  left: 0,
+                  bottom: 30
                 }}
               >
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                <XAxis 
-                  dataKey="label" 
-                  tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", textAnchor: "middle" }}
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} opacity={0.5} />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))", textAnchor: "middle" }}
                   axisLine={false}
                   tickLine={false}
                   tickFormatter={formatXAxisLabel}
-                  interval={(chartPeriod === "week" || chartPeriod === "month" || chartPeriod === "year") ? 0 : "preserveEnd"}
-                  tickMargin={10}
-                  padding={{ left: 0, right: 0 }}
-                  minTickGap={(chartPeriod === "week" || chartPeriod === "month" || chartPeriod === "year") ? 0 : 10}
+                  interval={chartPeriod === "month" || chartPeriod === "year" ? 0 : 0}
+                  tickMargin={15}
+                  padding={{ left: 10, right: 10 }}
+                  minTickGap={5}
+                  height={30}
                 />
                 <YAxis hide />
-                <Area 
-                  type="monotone" 
-                  dataKey="revenue" 
-                  stroke="#16a34a" 
-                  fill="rgba(22, 163, 74, 0.12)" 
-                  name="Pendapatan" 
-                  strokeWidth={2} 
+                <Tooltip
+                  cursor={{ stroke: "hsl(var(--primary))", strokeWidth: 1, strokeDasharray: "4 4" }}
+                  formatter={(value: any, name: any) => [formatRupiah(Number(value) || 0), name === "Pendapatan" ? "Pendapatan" : "Pengeluaran"]}
+                  labelFormatter={(label: any) => {
+                    if (chartPeriod === "month" || chartPeriod === "year") {
+                      const rollingMonth = rolling6Months.find(m => m.label === label);
+                      return rollingMonth ? rollingMonth.fullLabel : label;
+                    }
+                    return label;
+                  }}
+                  contentStyle={{
+                    background: "hsl(var(--background))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: 12,
+                    boxShadow: "0 8px 24px rgba(0,0,0,0.08)",
+                    fontSize: 12,
+                    padding: "12px",
+                  }}
                 />
-                <Area 
-                  type="monotone" 
-                  dataKey="expenses" 
-                  stroke="hsl(var(--destructive))" 
-                  fill="hsl(var(--destructive) / 0.1)" 
-                  name="Pengeluaran" 
-                  strokeWidth={2} 
+                <Legend
+                  verticalAlign="top"
+                  height={36}
+                  iconType="circle"
+                  wrapperStyle={{ paddingTop: '0px', fontSize: 10 }}
+                />
+                <defs>
+                  <linearGradient id="gradientRevenue" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#22c55e" stopOpacity={0.05}/>
+                  </linearGradient>
+                  <linearGradient id="gradientExpenses" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#f43f5e" stopOpacity={0.05}/>
+                  </linearGradient>
+                </defs>
+                <Area
+                  type="monotone"
+                  dataKey="revenue"
+                  stroke="#22c55e"
+                  fill="url(#gradientRevenue)"
+                  name="Pendapatan"
+                  strokeWidth={2.5}
+                  dot={false}
+                  activeDot={{ r: 4, fill: "#22c55e", strokeWidth: 2, stroke: "#fff" }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="expenses"
+                  stroke="#f43f5e"
+                  fill="url(#gradientExpenses)"
+                  name="Pengeluaran"
+                  strokeWidth={2.5}
+                  dot={false}
+                  activeDot={{ r: 4, fill: "#f43f5e", strokeWidth: 2, stroke: "#fff" }}
                 />
               </AreaChart>
             </ResponsiveContainer>

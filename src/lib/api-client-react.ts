@@ -146,6 +146,14 @@ export type RecentTransaction = {
   createdAt: string;
 };
 
+export type StaffSalesReportRow = {
+  staffId: string;
+  staffName: string;
+  totalRevenue: number;
+  totalTransactions: number;
+  totalServices: number;
+};
+
 export function getListServicesQueryKey(params?: { category?: string }) {
   return ["services", params ?? {}] as const;
 }
@@ -352,14 +360,20 @@ export function useDeleteTransaction() {
   });
 }
 
-export function useGetDashboardSummary(params: { period: "today" | "week" | "month" | "year" }) {
+export function useGetDashboardSummary(params: { period: "today" | "week" | "month" | "year"; startDate?: string; endDate?: string }) {
   return useQuery({
     queryKey: ["dashboard", "summary", params] as const,
-    queryFn: () => apiFetch<DashboardSummary>(`/dashboard/summary?period=${encodeURIComponent(params.period)}`),
+    staleTime: 0,
+    queryFn: () => {
+      const sp = new URLSearchParams({ period: params.period });
+      if (params.startDate) sp.set("startDate", params.startDate);
+      if (params.endDate) sp.set("endDate", params.endDate);
+      return apiFetch<DashboardSummary>(`/dashboard/summary?${sp.toString()}`);
+    },
   });
 }
 
-export function useGetRevenueChart(params: { period: "week" | "month" | "year" }) {
+export function useGetRevenueChart(params: { period: "today" | "week" | "month" | "year" }) {
   return useQuery({
     queryKey: ["dashboard", "revenue-chart", params] as const,
     queryFn: () => apiFetch<RevenueChartPoint[]>(`/dashboard/revenue-chart?period=${encodeURIComponent(params.period)}`),
@@ -377,5 +391,18 @@ export function useGetRecentTransactions(params: { limit: number }) {
   return useQuery({
     queryKey: ["dashboard", "recent-transactions", params] as const,
     queryFn: () => apiFetch<RecentTransaction[]>(`/dashboard/recent-transactions?limit=${encodeURIComponent(params.limit)}`),
+  });
+}
+
+export function useGetStaffSalesReport(params?: { startDate?: string; endDate?: string }) {
+  return useQuery({
+    queryKey: ["reports", "staff", params ?? {}] as const,
+    queryFn: () => {
+      const qs = new URLSearchParams();
+      if (params?.startDate) qs.set("startDate", params.startDate);
+      if (params?.endDate) qs.set("endDate", params.endDate);
+      const suffix = qs.toString() ? `?${qs.toString()}` : "";
+      return apiFetch<StaffSalesReportRow[]>(`/reports/staff${suffix}`);
+    },
   });
 }

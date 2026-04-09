@@ -1,23 +1,132 @@
-import { useGetDashboardSummary, useGetRevenueChart, useGetTopServices, useGetRecentTransactions } from "@/lib/api-client-react";
+import { useGetDashboardSummary, useGetRevenueChart, useGetTopServices, useGetRecentTransactions, useGetStaffSalesReport } from "@/lib/api-client-react";
 import { formatRupiah } from "@/lib/format";
 import { mockSummary, mockChartData, mockTopServices, mockRecentTransactions } from "@/lib/mock-data";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DatePicker } from "@/components/ui/date-picker";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Users, Receipt, Calendar as CalendarIcon, TrendingUp } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useToast } from "@/hooks/use-toast";
 
 export function Dashboard() {
   const isMobile = useIsMobile();
   const [period, setPeriod] = useState<"today" | "week" | "month" | "year">("today");
+  const [staffStartDate, setStaffStartDate] = useState<string>("");
+  const [staffEndDate, setStaffEndDate] = useState<string>("");
+  const { toast } = useToast();
+
+  const handleConfirmDateFilter = () => {
+    const formatDate = (dateStr: string) => {
+      if (!dateStr) return "";
+      const parts = dateStr.split('-');
+      if (parts.length === 3) {
+        return `${parts[2]}-${parts[1]}-${parts[0]}`;
+      }
+      return dateStr;
+    };
+
+    if (staffStartDate && staffEndDate) {
+      toast({
+        title: "Filter tanggal diterapkan",
+        description: `${formatDate(staffStartDate)} sampai ${formatDate(staffEndDate)}`,
+        variant: "success",
+      });
+    } else if (staffStartDate || staffEndDate) {
+      toast({
+        title: "Tanggal tidak lengkap",
+        description: "Mohon isi tanggal mulai dan tanggal akhir",
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Filter periode default",
+        description: "Menggunakan filter periode default",
+      });
+    }
+  };
+
+  const toDateOnlyString = (d: Date) => {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
+  const startOfWeekMonday = (d: Date) => {
+    const x = new Date(d);
+    x.setHours(0, 0, 0, 0);
+    const dayIndexMon0 = (x.getDay() + 6) % 7;
+    x.setDate(x.getDate() - dayIndexMon0);
+    return x;
+  };
   
-  const { data: summary, isLoading: loadingSummary } = useGetDashboardSummary({ period });
-  const chartPeriod = period === "today" ? "week" : period === "month" ? "year" : period;
+  const summaryRange = useMemo(() => {
+    const now = new Date();
+    const todayStr = toDateOnlyString(now);
+    let startDateStr = todayStr;
+    
+    if (period === "week") {
+      // Samakan dengan bulanan: dari tanggal 1 bulan berjalan
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      startDateStr = toDateOnlyString(start);
+    } else if (period === "month") {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      startDateStr = toDateOnlyString(start);
+    } else if (period === "year") {
+      const start = new Date(2026, 0, 1);
+      startDateStr = toDateOnlyString(start);
+    }
+    
+    return {
+      period,
+      startDate: startDateStr,
+      endDate: todayStr,
+    };
+  }, [period]);
+
+  const { data: summary, isLoading: loadingSummary } = useGetDashboardSummary(summaryRange);
+  const chartPeriod = period === "month" ? "year" : period;
   const { data: chartData = [], isLoading: loadingChart } = useGetRevenueChart({ period: chartPeriod });
   const { data: topServices = [], isLoading: loadingTop } = useGetTopServices();
   const { data: recentTransactions = [], isLoading: loadingRecent } = useGetRecentTransactions({ limit: 5 });
+
+  const staffReportRange = useMemo(() => {
+    // Jika filter tanggal custom diaktifkan, gunakan tanggal tersebut
+    if (staffStartDate && staffEndDate) {
+      const start = new Date(staffStartDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(staffEndDate);
+      end.setHours(23, 59, 59, 999);
+      return {
+        startDate: start.toISOString(),
+        endDate: end.toISOString(),
+      };
+    }
+
+    // Gunakan periode default jika filter tanggal tidak aktif
+    const end = new Date();
+    const start = new Date(end);
+    if (period === "today") {
+      start.setHours(0, 0, 0, 0);
+    } else if (period === "week") {
+      // Samakan dengan bulanan: dari tanggal 1 bulan berjalan
+      const startOfMonth = new Date(end.getFullYear(), end.getMonth(), 1);
+      start.setTime(startOfMonth.getTime());
+    } else if (period === "month") {
+      const startOfMonth = new Date(end.getFullYear(), end.getMonth(), 1);
+      start.setTime(startOfMonth.getTime());
+    } else {
+      const startOfYear = new Date(2026, 0, 1);
+      start.setTime(startOfYear.getTime());
+    }
+
+    return {
+      startDate: start.toISOString(),
+      endDate: end.toISOString(),
+    };
+  }, [period, staffStartDate, staffEndDate]);
+
+  const { data: staffSalesReport = [], isLoading: loadingStaffSales } = useGetStaffSalesReport(staffReportRange);
 
   // Use empty arrays/objects as fallback instead of mock data when data is explicitly empty
   const displaySummary = summary || { revenue: 0, transactionCount: 0, customerCount: 0, appointmentCount: 0 };
@@ -108,50 +217,23 @@ export function Dashboard() {
 
   const formatXAxisLabel = (label: any) => {
     if (label == null) return "";
-    const s = String(label);
+    const s = String(label).trim();
 
     if (chartPeriod === "year") {
       const idx = monthIndexFromLabel(s);
       if (idx != null) return monthLabels[idx] ?? s;
     }
 
-    if (chartPeriod === "week") {
-      // For weekly chart (period "week"), show M1, M2, M3... format
-      if (s.toLowerCase().startsWith("minggu")) {
-        const num = s.replace(/^minggu\s*/i, "");
-        return `M${num}`;
+    if (chartPeriod === "week" && /^m\d+$/i.test(s)) {
+      return s.toUpperCase();
+    }
+
+    // For daily chart (DD/MM format), show only DD
+    if (chartPeriod === "today") {
+      const parts = s.split("/");
+      if (parts.length === 2) {
+        return parts[0]; // Return only day
       }
-      
-      // For daily chart (period "today"), convert day labels
-      const dayIdx = (() => {
-        const cleaned = String(s).trim();
-
-        const direct = dayLabels.findIndex((d) => d.toLowerCase() === cleaned.toLowerCase());
-        if (direct >= 0) return direct;
-
-        const enMap: Record<string, number> = {
-          mon: 0,
-          tue: 1,
-          wed: 2,
-          thu: 3,
-          fri: 4,
-          sat: 5,
-          sun: 6,
-        };
-        const key3 = cleaned.slice(0, 3).toLowerCase();
-        if (key3 in enMap) return enMap[key3];
-
-        const d = new Date(cleaned);
-        if (!Number.isNaN(d.getTime())) {
-          const js = d.getDay();
-          const map = [6, 0, 1, 2, 3, 4, 5];
-          return map[js] ?? null;
-        }
-
-        return null;
-      })();
-
-      if (dayIdx != null) return dayLabels[dayIdx] ?? s;
     }
 
     return s;
@@ -159,55 +241,37 @@ export function Dashboard() {
 
   const formatTooltipLabel = (label: any, payload?: any) => {
     if (label == null) return "";
+    const s = String(label).trim();
+
     if (chartPeriod === "year") {
-      const idx = monthIndexFromLabel(label);
-      if (idx != null) return monthLabelsFull[idx] ?? String(label);
-      return String(label);
+      const idx = monthIndexFromLabel(s);
+      if (idx != null) return monthLabelsFull[idx] ?? s;
+      return s;
     }
 
-    if (chartPeriod !== "week") return formatXAxisLabel(label);
-
-    // For daily chart (period "today"), show day with date
-    if (payload?.date) {
-      const date = new Date(payload.date);
-      if (!Number.isNaN(date.getTime())) {
-        const dayIdx = dayLabels.findIndex((d) => String(label).trim().toLowerCase() === d.toLowerCase());
-        const dayName = dayIdx >= 0 ? dayLabelsFull[dayIdx] : String(label);
-        const dateNum = date.getDate();
-        const monthName = monthLabels[date.getMonth()];
-        const year = date.getFullYear();
-        return `${dayName}, ${dateNum} ${monthName} ${year}`;
-      }
+    if (chartPeriod === "week" && /^m\d+$/i.test(s)) {
+      return s.toUpperCase();
     }
 
-    // For weekly chart (period "week"), show week label with date range
-    if (payload?.dateRange) {
-      const startDate = new Date(payload.dateRange.start);
-      const endDate = new Date(payload.dateRange.end);
-      if (!Number.isNaN(startDate.getTime()) && !Number.isNaN(endDate.getTime())) {
-        const startDay = startDate.getDate();
-        const endDay = endDate.getDate();
-        const startMonth = monthLabels[startDate.getMonth()];
-        const endMonth = monthLabels[endDate.getMonth()];
-        const year = startDate.getFullYear();
-        
-        if (startMonth === endMonth) {
-          if (startDay === endDay) {
-            return `${label} (${startDay} ${startMonth} ${year})`;
-          }
-          return `${label} (${startDay} - ${endDay} ${startMonth} ${year})`;
-        } else {
-          return `${label} (${startDay} ${startMonth} - ${endDay} ${endMonth} ${year})`;
+    // For date labels (e.g., 01/04), show fuller date if possible
+    if (chartPeriod === "today" || chartPeriod === "week" || chartPeriod === "month") {
+      // Try parsing DD/MM
+      const parts = s.split('/');
+      if (parts.length === 2) {
+        const d = parseInt(parts[0]);
+        const m = parseInt(parts[1]) - 1;
+        if (!isNaN(d) && !isNaN(m)) {
+          const year = new Date().getFullYear();
+          return `${String(d).padStart(2, '0')} ${monthLabels[m]} ${year}`;
         }
       }
     }
-    return String(label);
+
+    return s;
   };
 
-  // Year labels for 8 years (2026-2034)
   const yearLabels = ["2026", "2027", "2028", "2029", "2030", "2031", "2032", "2033", "2034"];
-  
-  // Monthly chart data (12 months) - for period "month"
+
   const monthlyChartData = useMemo(() => {
     const base = monthLabels.map((m) => ({ label: m, revenue: 0 }));
     for (const p of displayChartData as Array<any>) {
@@ -218,40 +282,29 @@ export function Dashboard() {
     return base;
   }, [displayChartData]);
 
-  // Yearly chart data (8 years) - for period "year"
   const normalizedYearlyChartData = useMemo(() => {
     const currentYear = new Date().getFullYear();
-    
-    // Build 8 years of data
     const base = yearLabels.map((year) => ({
       label: year,
       revenue: 0,
       year: parseInt(year)
     }));
 
-    // Aggregate revenue by year from displayChartData (which contains monthly data)
     for (const p of (displayChartData as Array<any>) || []) {
       const raw = p?.label;
       if (raw == null) continue;
-      
       const cleaned = String(raw).trim();
-      
-      // Try to extract year from the label
-      // Labels could be "Jan", "Feb", etc. or "2026-01", "2026-02", etc.
+
       let yearIdx = -1;
-      
-      // Check if label contains a year
       const yearMatch = cleaned.match(/\b(20\d{2})\b/);
       if (yearMatch) {
         const yearStr = yearMatch[1];
         yearIdx = yearLabels.indexOf(yearStr);
       }
-      
-      // If no year found, assume current year's data
       if (yearIdx < 0) {
         yearIdx = yearLabels.indexOf(String(currentYear));
       }
-      
+
       if (yearIdx >= 0) {
         const rev = Number(p?.revenue ?? 0) || 0;
         base[yearIdx] = {
@@ -261,212 +314,23 @@ export function Dashboard() {
       }
     }
 
-    // Hide future years by setting revenue to null
-    const currentYearIdx = yearLabels.indexOf(String(currentYear));
-    return base.map((item, idx) => ({
-      ...item,
-      revenue: idx <= currentYearIdx ? item.revenue : null
-    }));
+    return base;
   }, [displayChartData, yearLabels]);
 
-  // Select which chart data to use for year period
   const normalizedChartData = useMemo(() => {
     if (chartPeriod !== "year") return displayChartData;
-    // Use monthly chart for "month" period, yearly chart for "year" period
-    return period === "month" ? monthlyChartData : normalizedYearlyChartData;
-  }, [chartPeriod, period, monthlyChartData, normalizedYearlyChartData, displayChartData]);
+    return normalizedYearlyChartData;
+  }, [chartPeriod, normalizedYearlyChartData, displayChartData]);
 
-  // Calculate dates for each day of current week (Monday to Sunday) - for daily chart
-  const weekDates = useMemo(() => {
-    const today = new Date();
-    const jsDay = today.getDay(); // 0=Sunday, 1=Monday, ..., 6=Saturday
-    const mondayOffset = jsDay === 0 ? -6 : 1 - jsDay;
-    
-    const monday = new Date(today);
-    monday.setDate(today.getDate() + mondayOffset);
-    monday.setHours(0, 0, 0, 0);
+  const finalChartData = useMemo(() => {
+    if (period === "month") return monthlyChartData;
+    if (chartPeriod === "year") return normalizedYearlyChartData;
+    return normalizedChartData;
+  }, [period, chartPeriod, monthlyChartData, normalizedYearlyChartData, normalizedChartData]);
 
-    return dayLabels.map((_, idx) => {
-      const date = new Date(monday);
-      date.setDate(monday.getDate() + idx);
-      return date;
-    });
-  }, [dayLabels]);
-
-  // Daily chart data (7 days) - for period "today"
-  const dailyChartData = useMemo(() => {
-    if (chartPeriod !== "week") return normalizedChartData;
-
-    const base = dayLabels.map((d, idx) => ({ 
-      label: d, 
-      revenue: 0,
-      date: weekDates[idx].toISOString()
-    }));
-
-    for (const p of (displayChartData as Array<any>) || []) {
-      const idx = (() => {
-        const raw = p?.label;
-        if (raw == null) return null;
-        const cleaned = String(raw).trim();
-
-        const direct = dayLabels.findIndex((d) => d.toLowerCase() === cleaned.toLowerCase());
-        if (direct >= 0) return direct;
-
-        const enMap: Record<string, number> = {
-          mon: 0, tue: 1, wed: 2, thu: 3, fri: 4, sat: 5, sun: 6,
-        };
-        const key3 = cleaned.slice(0, 3).toLowerCase();
-        if (key3 in enMap) return enMap[key3];
-
-        const d = new Date(cleaned);
-        if (!Number.isNaN(d.getTime())) {
-          const js = d.getDay();
-          const map = [6, 0, 1, 2, 3, 4, 5];
-          return map[js] ?? null;
-        }
-
-        return null;
-      })();
-
-      if (idx == null) continue;
-      const rev = Number(p?.revenue ?? 0) || 0;
-      base[idx] = { ...base[idx], label: dayLabels[idx], revenue: (Number(base[idx].revenue) || 0) + rev, date: base[idx].date };
-    }
-
-    // Hide bars for future days
-    const jsDay = new Date().getDay();
-    const currentDayIndex = jsDay === 0 ? 6 : jsDay - 1;
-
-    return base.map((item, idx) => ({
-      ...item,
-      revenue: idx <= currentDayIndex ? item.revenue : null
-    }));
-  }, [chartPeriod, dayLabels, displayChartData, normalizedChartData, weekDates]);
-
-  // Calculate 8 weeks (2 months) - for weekly chart
-  const weekLabels = ["Minggu 1", "Minggu 2", "Minggu 3", "Minggu 4", "Minggu 5", "Minggu 6", "Minggu 7", "Minggu 8"];
-  
-  const twoMonthWeekDates = useMemo(() => {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = today.getMonth();
-    
-    const weeks = [];
-    for (let w = 0; w < 8; w++) {
-      let startDay: number, m: number, y: number;
-      if (w < 4) {
-        m = month;
-        y = year;
-        startDay = w * 7 + 1;
-      } else {
-        m = month + 1;
-        y = month + 1 > 11 ? year + 1 : year;
-        startDay = (w - 4) * 7 + 1;
-      }
-      
-      const lastDayOfMonth = new Date(y, m + 1, 0).getDate();
-      const endDay = Math.min(startDay + 6, lastDayOfMonth);
-      
-      if (startDay <= lastDayOfMonth) {
-        weeks.push({
-          start: new Date(y, m, startDay),
-          end: new Date(y, m, endDay),
-          weekNum: w + 1
-        });
-      }
-    }
-    return weeks;
-  }, []);
-
-  // Weekly chart data (8 weeks) - for period "week"
-  const weeklyChartData = useMemo(() => {
-    const today = new Date();
-    
-    // Determine current week index (0-7)
-    let currentWeekIdx = 0;
-    for (let i = 0; i < twoMonthWeekDates.length; i++) {
-      const week = twoMonthWeekDates[i];
-      if (today >= week.start && today <= week.end) {
-        currentWeekIdx = i;
-        break;
-      }
-    }
-
-    // Build 8 weeks of data
-    const base = weekLabels.slice(0, twoMonthWeekDates.length).map((label, idx) => {
-      const weekData = twoMonthWeekDates[idx];
-      return {
-        label,
-        revenue: 0,
-        dateRange: weekData ? {
-          start: weekData.start.toISOString(),
-          end: weekData.end.toISOString()
-        } : null
-      };
-    });
-
-    // Map day labels to dates for the past 7 days
-    const jsDay = today.getDay();
-    const dayOfWeek = jsDay === 0 ? 6 : jsDay - 1;
-    
-    const dayLabelToDate = new Map<string, Date>();
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(today);
-      d.setDate(today.getDate() - (dayOfWeek - i));
-      d.setHours(0, 0, 0, 0);
-      dayLabelToDate.set(dayLabels[i], d);
-    }
-
-    // Aggregate revenue by week from displayChartData
-    for (const p of (displayChartData as Array<any>) || []) {
-      const raw = p?.label;
-      if (raw == null) continue;
-      
-      const cleaned = String(raw).trim();
-      
-      const date = dayLabelToDate.get(cleaned);
-      if (!date) {
-        const d = new Date(cleaned);
-        if (Number.isNaN(d.getTime())) continue;
-        
-        for (let i = 0; i < twoMonthWeekDates.length; i++) {
-          const week = twoMonthWeekDates[i];
-          if (d >= week.start && d <= week.end) {
-            const rev = Number(p?.revenue ?? 0) || 0;
-            base[i] = {
-              ...base[i],
-              revenue: (Number(base[i].revenue) || 0) + rev
-            };
-            break;
-          }
-        }
-      } else {
-        for (let i = 0; i < twoMonthWeekDates.length; i++) {
-          const week = twoMonthWeekDates[i];
-          if (date >= week.start && date <= week.end) {
-            const rev = Number(p?.revenue ?? 0) || 0;
-            base[i] = {
-              ...base[i],
-              revenue: (Number(base[i].revenue) || 0) + rev
-            };
-            break;
-          }
-        }
-      }
-    }
-
-    return base.map((item, idx) => ({
-      ...item,
-      revenue: idx <= currentWeekIdx ? item.revenue : null
-    }));
-  }, [displayChartData, twoMonthWeekDates, dayLabels]);
-
-  // Select which chart data to use based on period
-  const normalizedWeekChartData = useMemo(() => {
-    if (chartPeriod !== "week") return normalizedChartData;
-    // Use daily chart for "today" period, weekly chart for "week" period
-    return period === "today" ? dailyChartData : weeklyChartData;
-  }, [chartPeriod, period, dailyChartData, weeklyChartData, normalizedChartData]);
+  const staffSalesTotal = useMemo(() => {
+    return (staffSalesReport ?? []).reduce((acc, row) => acc + (Number((row as any)?.totalRevenue ?? 0) || 0), 0);
+  }, [staffSalesReport]);
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -536,83 +400,164 @@ export function Dashboard() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-        <Card className="col-span-1 lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Grafik Pendapatan</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[220px] sm:h-[300px]">
-              {loadingChart ? (
-                <Skeleton className="h-full w-full" />
-              ) : displayChartData && displayChartData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={chartPeriod === "week" ? normalizedWeekChartData : normalizedChartData}
-                    margin={{ top: 12, right: 0, left: 0, bottom: 0 }}
-                  >
-                    <XAxis
-                      dataKey="label"
-                      tick={{ fontSize: isMobile ? 10 : 12, fill: "hsl(var(--muted-foreground))", textAnchor: "middle" }}
-                      tickLine={false}
-                      axisLine={false}
-                      tickFormatter={formatXAxisLabel}
-                      interval={(chartPeriod === "week" || chartPeriod === "year") ? 0 : "preserveEnd"}
-                      tickMargin={10}
-                      padding={{ left: 0, right: 0 }}
-                      minTickGap={(chartPeriod === "week" || chartPeriod === "year") ? 0 : 12}
-                    />
-                    <YAxis hide />
-                    <Tooltip
-                      cursor={false}
-                      labelFormatter={(value: any, payload: any) => {
-                        // payload is an array, get the first item's payload
-                        const data = Array.isArray(payload) ? payload[0]?.payload : payload?.payload;
-                        return formatTooltipLabel(value, data);
-                      }}
-                      formatter={(value: any) => [formatRupiah(Number(value) || 0), "Pendapatan"]}
-                      contentStyle={{
-                        background: "hsl(var(--background))",
-                        border: "1px solid hsl(var(--border))",
-                        borderRadius: 10,
-                        boxShadow: "0 12px 30px rgba(0,0,0,0.12)",
-                        fontSize: 12,
-                      }}
-                    />
-                    <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} maxBarSize={48} />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
-                  Belum ada data pendapatan
+      <div className="grid grid-cols-1 gap-4 sm:gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+          <Card className="col-span-1 lg:col-span-2">
+            <CardHeader>
+              <CardTitle>Grafik Pendapatan</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[220px] sm:h-[300px]">
+                {loadingChart ? (
+                  <Skeleton className="h-full w-full" />
+                ) : displayChartData && displayChartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={finalChartData}
+                      margin={{ top: 12, right: 0, left: 0, bottom: 0 }}
+                    >
+                      <XAxis
+                        dataKey="label"
+                        tick={{ fontSize: isMobile ? 10 : 12, fill: "hsl(var(--muted-foreground))", textAnchor: "middle" }}
+                        tickLine={false}
+                        axisLine={false}
+                        tickFormatter={formatXAxisLabel}
+                        interval={(chartPeriod === "week" || chartPeriod === "year") ? 0 : "preserveEnd"}
+                        tickMargin={10}
+                        padding={{ left: 0, right: 0 }}
+                        minTickGap={(chartPeriod === "week" || chartPeriod === "year") ? 0 : 12}
+                      />
+                      <YAxis hide />
+                      <Tooltip
+                        cursor={false}
+                        labelFormatter={(value: any, payload: any) => {
+                          const data = Array.isArray(payload) ? payload[0]?.payload : payload?.payload;
+                          if (data?.range) return `${value} (${data.range})`;
+                          return formatTooltipLabel(value, data);
+                        }}
+                        formatter={(value: any) => [formatRupiah(Number(value) || 0), "Pendapatan"]}
+                        contentStyle={{
+                          background: "hsl(var(--background))",
+                          border: "1px solid hsl(var(--border))",
+                          borderRadius: 10,
+                          boxShadow: "0 12px 30px rgba(0,0,0,0.12)",
+                          fontSize: 12,
+                        }}
+                      />
+                      <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} maxBarSize={48} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
+                    Belum ada data pendapatan
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Layanan Terpopuler</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {loadingTop ? (
+                  Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)
+                ) : Array.isArray(displayTopServices) && displayTopServices.length > 0 ? (
+                  displayTopServices.map((service) => (
+                    <div key={service.serviceId} className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium text-xs md:text-sm">{service.serviceName}</p>
+                        <p className="text-[10px] md:text-xs text-muted-foreground">{service.count} kali</p>
+                      </div>
+                      <div className="text-xs md:text-sm font-semibold">{formatRupiah(service.revenue)}</div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center text-xs md:text-sm text-muted-foreground py-4">Belum ada data layanan</div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card className="w-full">
+          <CardHeader className="flex flex-col space-y-4 pb-4">
+            <div className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-lg font-bold">Kalkulator Salon</CardTitle>
+                <p className="text-xs text-muted-foreground mt-1">Rincian performa anggota</p>
+              </div>
+              {!loadingStaffSales && staffSalesReport.length > 0 && (
+                <div className="text-right">
+                  <p className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">Total Omset</p>
+                  <p className="text-xl font-black text-primary tracking-tight">{formatRupiah(staffSalesTotal)}</p>
                 </div>
               )}
             </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Layanan Terpopuler</CardTitle>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="flex-1">
+                <DatePicker
+                  value={staffStartDate}
+                  onChange={setStaffStartDate}
+                  placeholder="Tanggal Mulai"
+                  className="text-xs"
+                />
+              </div>
+              <div className="flex-1">
+                <DatePicker
+                  value={staffEndDate}
+                  onChange={setStaffEndDate}
+                  placeholder="Tanggal Akhir"
+                  className="text-xs"
+                />
+              </div>
+              <button
+                onClick={handleConfirmDateFilter}
+                className="text-xs bg-primary hover:bg-primary/90 text-primary-foreground px-3 py-2 rounded-md font-medium transition-colors"
+              >
+                Konfirmasi
+              </button>
+              <button
+                onClick={() => {
+                  setStaffStartDate("");
+                  setStaffEndDate("");
+                }}
+                className="text-xs bg-secondary hover:bg-secondary/80 text-secondary-foreground px-3 py-2 rounded-md font-medium transition-colors"
+              >
+                Reset
+              </button>
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {loadingTop ? (
-                Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)
-              ) : Array.isArray(displayTopServices) && displayTopServices.length > 0 ? (
-                displayTopServices.map((service) => (
-                  <div key={service.serviceId} className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium text-xs md:text-sm">{service.serviceName}</p>
-                      <p className="text-[10px] md:text-xs text-muted-foreground">{service.count} kali</p>
+            {loadingStaffSales ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-xl" />)}
+              </div>
+            ) : Array.isArray(staffSalesReport) && staffSalesReport.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {staffSalesReport.map((row: any) => (
+                  <div key={row.staffId} className="flex items-center justify-between p-4 rounded-xl bg-muted/30 border border-transparent hover:border-primary/20 hover:bg-primary/5 transition-all group">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-sm font-bold group-hover:text-primary transition-colors">{row.staffName}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="flex h-1.5 w-1.5 rounded-full bg-primary/40" />
+                        <span className="text-[10px] font-medium text-muted-foreground">{row.totalTransactions} Transaksi</span>
+                      </div>
                     </div>
-                    <div className="text-xs md:text-sm font-semibold">{formatRupiah(service.revenue)}</div>
+                    <div className="text-sm font-black tabular-nums text-right">
+                      {formatRupiah(row.totalRevenue)}
+                    </div>
                   </div>
-                ))
-              ) : (
-                <div className="text-center text-xs md:text-sm text-muted-foreground py-4">Belum ada data layanan</div>
-              )}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-10 opacity-60">
+                <Users className="h-8 w-8 text-muted-foreground mb-2" />
+                <p className="text-sm font-medium text-muted-foreground">Belum ada data penjualan staff</p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

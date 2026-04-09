@@ -1285,54 +1285,151 @@ app.delete("/api/expenses/:id", async (req, res) => {
 app.get("/api/dashboard/summary", async (req, res) => {
   try {
     const period = (req.query.period as string) || "7d";
-    let days = 7;
-    if (period === "today") days = 0;
-    else if (period === "30d" || period === "month") days = 30;
-    else if (period === "year") days = 365;
+    let startDate: Date;
+    let endDate: Date;
 
-    const startDate = new Date();
-    if (days > 0) {
-      startDate.setDate(startDate.getDate() - days);
+    const tzOffset = 7; // Asia/Jakarta (UTC+7)
+
+    if (req.query.startDate && req.query.endDate) {
+      const startStr = req.query.startDate as string;
+      const endStr = req.query.endDate as string;
+      // Gunakan ISO format YYYY-MM-DD agar parse Date konsisten
+      startDate = new Date(`${startStr}T00:00:00+0${tzOffset}:00`);
+      endDate = new Date(`${endStr}T23:59:59.999+0${tzOffset}:00`);
     } else {
-      startDate.setHours(0, 0, 0, 0);
+      endDate = new Date();
+      startDate = new Date(endDate);
+      
+      if (period === "today") {
+        // Set ke awal hari ini di WIB (UTC+7)
+        startDate = new Date(endDate);
+        startDate.setUTCHours(0 - tzOffset, 0, 0, 0); 
+      } else if (period === "week" || period === "7d") {
+        startDate.setDate(endDate.getDate() - 6);
+        startDate.setUTCHours(0 - tzOffset, 0, 0, 0);
+      } else if (period === "month" || period === "30d") {
+        startDate.setDate(endDate.getDate() - 29);
+        startDate.setUTCHours(0 - tzOffset, 0, 0, 0);
+      } else if (period === "year") {
+        startDate.setFullYear(endDate.getFullYear() - 1);
+        startDate.setUTCHours(0 - tzOffset, 0, 0, 0);
+      } else {
+        startDate.setDate(endDate.getDate() - 6);
+        startDate.setUTCHours(0 - tzOffset, 0, 0, 0);
+      }
     }
 
-    const [customersResult, servicesResult, staffResult, transactionsResult, appointmentsResult] =
-      await Promise.all([
-        supabase.from("customers").select("id", { count: "exact", head: true }),
-        supabase.from("services").select("id", { count: "exact", head: true }),
-        supabase.from("staff").select("id", { count: "exact", head: true }),
-        supabase
-          .from("transactions")
-          .select("total_amount", { count: "exact" })
-          .gte("created_at", startDate.toISOString()),
-        supabase
-          .from("appointments")
-          .select("id", { count: "exact", head: true })
-          .gte("created_at", startDate.toISOString()),
-      ]);
+    const [customersResult, servicesResult, staffResult, appointmentsResult] = await Promise.all([
+      supabase.from("customers").select("id", { count: "exact", head: true }),
+      supabase.from("services").select("id", { count: "exact", head: true }),
+      supabase.from("staff").select("id", { count: "exact", head: true }),
+      supabase
+        .from("appointments")
+        .select("id", { count: "exact", head: true })
+        .gte("appointment_date", startDate.toISOString())
+        .lte("appointment_date", endDate.toISOString()),
+    ]);
 
-    if (customersResult.error || servicesResult.error || staffResult.error || transactionsResult.error) {
+    const txContext = "GET /api/dashboard/summary (transactions)";
+    const txProjections = [
+      "id, total_amount, created_at, updated_at",
+      "id, total_amount, created_at",
+      "*",
+    ];
+
+    const txResult = await trySelect<any>(txContext, "transactions", txProjections, (q) =>
+      q.order("created_at", { ascending: false }),
+    );
+
+    if (customersResult.error || servicesResult.error || staffResult.error || txResult.error) {
       res.status(500).json({
         error:
           customersResult.error?.message ||
           servicesResult.error?.message ||
           staffResult.error?.message ||
-          transactionsResult.error?.message ||
+          txResult.error?.message ||
           "Unknown supabase error",
         context: "GET /api/dashboard/summary",
       });
       return;
     }
 
-    const revenue = (transactionsResult.data ?? []).reduce(
-      (sum, t) => sum + Number(t.total_amount || 0),
-      0,
+    const txStartMs = startDate.getTime();
+    const txEndMs = endDate.getTime();
+
+    const parseTxDateMs = (raw: any): number | null => {
+      if (raw == null) return null;
+      if (raw instanceof Date) {
+        const ms = raw.getTime();
+        return Number.isNaN(ms) ? null : ms;
+      }
+      if (typeof raw === "number") {
+        return Number.isNaN(raw) ? null : raw;
+      }
+
+      const s = String(raw).trim();
+      if (!s) return null;
+
+      const ms1 = new Date(s).getTime();
+      if (!Number.isNaN(ms1)) return ms1;
+
+      const m = s.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(\.\d+)?$/);
+      if (m) {
+        const isoLike = `${m[1]}T${m[2]}${m[3] ?? ""}Z`;
+        const ms2 = new Date(isoLike).getTime();
+        return Number.isNaN(ms2) ? null : ms2;
+      }
+
+      return null;
+    };
+
+    let missingDate = 0;
+    let invalidDate = 0;
+    let inRange = 0;
+
+    const filteredTx = (txResult.data ?? []).filter((t: any) => {
+      const raw = pickFirst(t, ["created_at", "createdAt", "updated_at", "updatedAt"]);
+      if (raw == null || raw === "") {
+        missingDate += 1;
+        return false;
+      }
+      const ms = parseTxDateMs(raw);
+      if (ms == null) {
+        invalidDate += 1;
+        return false;
+      }
+      const ok = ms >= txStartMs && ms <= txEndMs;
+      if (ok) inRange += 1;
+      return ok;
+    });
+
+    const sampleDates = (txResult.data ?? []).slice(0, 5).map((t: any) => ({
+      id: t?.id,
+      created_at: pickFirst(t, ["created_at", "createdAt"]),
+      updated_at: pickFirst(t, ["updated_at", "updatedAt"]),
+    }));
+
+    logger.info(
+      {
+        context: "GET /api/dashboard/summary",
+        period,
+        start: startDate.toISOString(),
+        end: endDate.toISOString(),
+        txTotal: (txResult.data ?? []).length,
+        txMissingDate: missingDate,
+        txInvalidDate: invalidDate,
+        txInRange: inRange,
+        sampleDates,
+      },
+      "Dashboard summary transaction filter stats",
     );
 
+    const revenue = filteredTx.reduce((sum: number, t: any) => sum + Number(t?.total_amount || 0), 0);
+
+    
     res.json({
       revenue,
-      transactionCount: transactionsResult.count || 0,
+      transactionCount: filteredTx.length,
       customerCount: customersResult.count || 0,
       appointmentCount: appointmentsResult.count || 0,
       totalCustomers: customersResult.count || 0,
@@ -1420,30 +1517,107 @@ app.get("/api/dashboard/recent-transactions", async (req, res) => {
 app.get("/api/dashboard/revenue-chart", async (req, res) => {
   try {
     const period = (req.query.period as string) || "week";
-    const endDate = new Date();
-    const startDate = new Date(endDate);
+    const now = new Date();
+
+    // Helper: get YYYY-MM-DD in Asia/Jakarta timezone
+    const ymdJakarta = (d: Date) => {
+      const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Jakarta",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).formatToParts(d);
+      return {
+        y: parts.find((p) => p.type === "year")?.value ?? "1970",
+        m: parts.find((p) => p.type === "month")?.value ?? "01",
+        d: parts.find((p) => p.type === "day")?.value ?? "01",
+      };
+    };
+
+    // Helper: create Date at start of day in Jakarta timezone
+    const startOfDayJakarta = (y: string, m: string, d: string) =>
+      new Date(`${y}-${m}-${d}T00:00:00+07:00`);
+
+    // Helper: create Date at end of day in Jakarta timezone
+    const endOfDayJakarta = (y: string, m: string, d: string) =>
+      new Date(`${y}-${m}-${d}T23:59:59.999+07:00`);
+
+    let startDate: Date;
+    let endDate: Date;
+
     if (period === "week") {
-      startDate.setDate(endDate.getDate() - 6);
-      startDate.setHours(0, 0, 0, 0);
+      // Weekly within current month: M1=1-7, M2=8-14, M3=15-21, M4=22-28, M5=29-end
+      const today = ymdJakarta(now);
+      const daysInMonth = new Date(parseInt(today.y), parseInt(today.m), 0).getDate();
+
+      startDate = startOfDayJakarta(today.y, today.m, "01");
+      endDate = endOfDayJakarta(today.y, today.m, String(daysInMonth).padStart(2, "0"));
     } else if (period === "month") {
-      startDate.setDate(endDate.getDate() - 29);
-      startDate.setHours(0, 0, 0, 0);
+      // 30 days
+      const today = ymdJakarta(now);
+      const end = endOfDayJakarta(today.y, today.m, today.d);
+      const start = new Date(end);
+      start.setUTCDate(start.getUTCDate() - 29);
+      const startYmd = ymdJakarta(start);
+      startDate = startOfDayJakarta(startYmd.y, startYmd.m, startYmd.d);
+      endDate = end;
     } else if (period === "year") {
-      startDate.setMonth(endDate.getMonth() - 11);
-      startDate.setDate(1);
-      startDate.setHours(0, 0, 0, 0);
+      // 12 months
+      const today = ymdJakarta(now);
+      const startMonth = String(Number(today.m) - 11 <= 0 ? Number(today.m) + 1 : Number(today.m) - 11).padStart(2, "0");
+      const startYear = Number(today.m) - 11 <= 0 ? String(Number(today.y) - 1) : today.y;
+      startDate = startOfDayJakarta(startYear, startMonth, "01");
+      endDate = endOfDayJakarta(today.y, today.m, today.d);
     } else {
-      startDate.setDate(endDate.getDate() - 6);
-      startDate.setHours(0, 0, 0, 0);
+      // Default (today/daily): always 10 bars
+      const today = ymdJakarta(now);
+      const dayNum = parseInt(today.d, 10);
+
+      if (dayNum <= 10) {
+        // If today is 1-10, show 1st to 10th (10 bars)
+        startDate = startOfDayJakarta(today.y, today.m, "01");
+        endDate = endOfDayJakarta(today.y, today.m, "10");
+      } else {
+        // If today > 10, show rolling 10 days
+        const end = endOfDayJakarta(today.y, today.m, today.d);
+        const start = new Date(end);
+        start.setUTCDate(start.getUTCDate() - 9);
+        const startYmd = ymdJakarta(start);
+        startDate = startOfDayJakarta(startYmd.y, startYmd.m, startYmd.d);
+        endDate = end;
+      }
     }
 
     const context = "GET /api/dashboard/revenue-chart";
 
-    const isoDate = (d: Date) => d.toISOString().slice(0, 10);
-    const monthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const isoDate = (d: Date) => {
+      // Create a date string in DD/MM format using Asia/Jakarta timezone
+      const options: Intl.DateTimeFormatOptions = {
+        timeZone: 'Asia/Jakarta',
+        day: '2-digit',
+        month: '2-digit'
+      };
+      const parts = new Intl.DateTimeFormat('en-GB', options).formatToParts(d);
+      const day = parts.find(p => p.type === 'day')?.value;
+      const month = parts.find(p => p.type === 'month')?.value;
+      return `${day}/${month}`;
+    };
+    const monthKey = (d: Date) => {
+      const options: Intl.DateTimeFormatOptions = {
+        timeZone: 'Asia/Jakarta',
+        year: 'numeric',
+        month: '2-digit'
+      };
+      const parts = new Intl.DateTimeFormat('en-GB', options).formatToParts(d);
+      const year = parts.find(p => p.type === 'year')?.value;
+      const month = parts.find(p => p.type === 'month')?.value;
+      return `${year}-${month}`;
+    };
     const monthLabel = (d: Date) => {
-      const labels = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
-      return labels[d.getMonth()] ?? String(d.getMonth() + 1);
+      return new Intl.DateTimeFormat('id-ID', {
+        timeZone: 'Asia/Jakarta',
+        month: 'short'
+      }).format(d);
     };
 
     const txResult = await trySelect<any>(
@@ -1465,35 +1639,84 @@ app.get("/api/dashboard/revenue-chart", async (req, res) => {
     const { data: expensesData, error: expensesError } = await supabase
       .from("expenses")
       .select("amount, expense_date, created_at")
-      .gte("expense_date", isoDate(startDate))
-      .lte("expense_date", isoDate(endDate))
+      .gte("expense_date", startDate.toISOString().split('T')[0])
+      .lte("expense_date", endDate.toISOString().split('T')[0])
       .order("expense_date", { ascending: true });
 
     if (expensesError) {
       logger.warn({ err: expensesError, context }, "Failed to load expenses for revenue chart; defaulting to 0");
     }
 
-    const buckets: Array<{ key: string; label: string; revenue: number; expenses: number }> = [];
+    const hasAnyRevenue = (txResult.data ?? []).some((tx) => {
+      const raw = pickFirst(tx, ["total_amount", "total", "grand_total", "amount"]);
+      return Number(raw ?? 0) > 0;
+    });
+    const hasAnyExpenses = (expensesData ?? []).some((ex: any) => Number(ex?.amount ?? 0) > 0);
 
-    if (period === "year") {
+    if (!hasAnyRevenue && !hasAnyExpenses) {
+      res.json([]);
+      return;
+    }
+
+    const buckets: Array<{
+      key: string;
+      label: string;
+      revenue: number;
+      expenses: number;
+      range?: string;
+      startDate?: string;
+      endDate?: string;
+    }> = [];
+
+    if (period === "week") {
+      // Weekly buckets within current month: M1=1-7, M2=8-14, M3=15-21, M4=22-28, M5=29-end
+      const today = ymdJakarta(now);
+      const daysInMonth = new Date(parseInt(today.y), parseInt(today.m), 0).getDate();
+
+      const weekRanges = [
+        { label: "M1", start: 1, end: 7 },
+        { label: "M2", start: 8, end: 14 },
+        { label: "M3", start: 15, end: 21 },
+        { label: "M4", start: 22, end: 28 },
+        { label: "M5", start: 29, end: daysInMonth },
+      ];
+
+      for (const wr of weekRanges) {
+        if (wr.start > daysInMonth) continue;
+
+        const bucketStart = startOfDayJakarta(today.y, today.m, String(wr.start).padStart(2, "0"));
+        const bucketEnd = endOfDayJakarta(today.y, today.m, String(wr.end).padStart(2, "0"));
+
+        buckets.push({
+          key: wr.label,
+          label: wr.label,
+          revenue: 0,
+          expenses: 0,
+          range: `${String(wr.start).padStart(2, "0")}/${today.m} - ${String(wr.end).padStart(2, "0")}/${today.m}`,
+          startDate: bucketStart.toISOString(),
+          endDate: bucketEnd.toISOString(),
+        });
+      }
+    } else if (period === "year") {
       const cursor = new Date(startDate);
-      cursor.setDate(1);
-      cursor.setHours(0, 0, 0, 0);
-      while (cursor <= endDate) {
-        buckets.push({ key: monthKey(cursor), label: monthLabel(cursor), revenue: 0, expenses: 0 });
-        cursor.setMonth(cursor.getMonth() + 1);
+      cursor.setUTCHours(0, 0, 0, 0);
+      for (let i = 0; i < 12; i++) {
+        const key = monthKey(cursor);
+        buckets.push({ key, label: monthLabel(cursor), revenue: 0, expenses: 0 });
+        cursor.setUTCMonth(cursor.getUTCMonth() + 1);
       }
     } else {
-      const cursor = new Date(startDate);
-      cursor.setHours(0, 0, 0, 0);
-      while (cursor <= endDate) {
+      // Daily buckets: from 1st of month to today in Jakarta timezone
+      const startYmd = ymdJakarta(startDate);
+      const endYmd = ymdJakarta(endDate);
+
+      let cursor = new Date(`${startYmd.y}-${startYmd.m}-${startYmd.d}T12:00:00+07:00`);
+      const endDateNoon = new Date(`${endYmd.y}-${endYmd.m}-${endYmd.d}T12:00:00+07:00`);
+
+      while (cursor <= endDateNoon) {
         const key = isoDate(cursor);
-        const label =
-          period === "week"
-            ? cursor.toLocaleDateString("id-ID", { weekday: "short" })
-            : cursor.toLocaleDateString("id-ID", { day: "2-digit", month: "2-digit" });
-        buckets.push({ key, label, revenue: 0, expenses: 0 });
-        cursor.setDate(cursor.getDate() + 1);
+        buckets.push({ key, label: key, revenue: 0, expenses: 0 });
+        cursor = new Date(cursor.getTime() + 24 * 60 * 60 * 1000); // add 1 day in ms
       }
     }
 
@@ -1503,7 +1726,25 @@ app.get("/api/dashboard/revenue-chart", async (req, res) => {
       const createdAt = pickFirst(tx, ["created_at", "createdAt"]);
       if (!createdAt) return;
       const d = new Date(createdAt);
-      const key = period === "year" ? monthKey(d) : isoDate(d);
+      let key: string | null = null;
+
+      if (period === "week") {
+        for (const b0 of buckets) {
+          const ws = b0.startDate ? new Date(b0.startDate) : null;
+          const we = b0.endDate ? new Date(b0.endDate) : null;
+          if (!ws || !we) continue;
+          const weEnd = new Date(we);
+          weEnd.setUTCHours(23, 59, 59, 999);
+          if (d >= ws && d <= weEnd) {
+            key = b0.key;
+            break;
+          }
+        }
+      } else {
+        key = period === "year" ? monthKey(d) : isoDate(d);
+      }
+
+      if (!key) return;
       const b = bucketByKey.get(key);
       if (!b) return;
       const value = Number(pickFirst(tx, ["total_amount", "total", "grand_total", "amount"]) ?? 0);
@@ -1514,14 +1755,33 @@ app.get("/api/dashboard/revenue-chart", async (req, res) => {
       const raw = ex?.expense_date || ex?.created_at;
       if (!raw) return;
       const d = new Date(raw);
-      const key = period === "year" ? monthKey(d) : isoDate(d);
+
+      let key: string | null = null;
+
+      if (period === "week") {
+        for (const b0 of buckets) {
+          const ws = b0.startDate ? new Date(b0.startDate) : null;
+          const we = b0.endDate ? new Date(b0.endDate) : null;
+          if (!ws || !we) continue;
+          const weEnd = new Date(we);
+          weEnd.setUTCHours(23, 59, 59, 999);
+          if (d >= ws && d <= weEnd) {
+            key = b0.key;
+            break;
+          }
+        }
+      } else {
+        key = period === "year" ? monthKey(d) : isoDate(d);
+      }
+
+      if (!key) return;
       const b = bucketByKey.get(key);
       if (!b) return;
       const value = Number(ex?.amount ?? 0);
       b.expenses += value;
     });
 
-    res.json(buckets.map(({ label, revenue, expenses }) => ({ label, revenue, expenses })));
+    res.json(buckets.map(({ label, revenue, expenses, range }) => ({ label, revenue, expenses, range })));
   } catch (err) {
     respond500(res, "GET /api/dashboard/revenue-chart", err);
   }
