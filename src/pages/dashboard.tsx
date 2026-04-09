@@ -10,6 +10,7 @@ import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recha
 import { Users, Receipt, Calendar as CalendarIcon, TrendingUp } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useToast } from "@/hooks/use-toast";
+import { motion } from "framer-motion";
 
 export function Dashboard() {
   const isMobile = useIsMobile();
@@ -198,6 +199,27 @@ export function Dashboard() {
   ];
   const dayLabels = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
   const dayLabelsFull = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"];
+
+  // Get 6 months for mobile view (starting from current month)
+  const getMobile6Months = () => {
+    const now = new Date();
+    const currentMonth = now.getMonth(); // 0-11
+    const currentYear = now.getFullYear();
+
+    const months = [];
+    for (let i = 0; i < 6; i++) {
+      const monthIndex = (currentMonth + i) % 12;
+      const year = currentMonth + i >= 12 ? currentYear + 1 : currentYear;
+      months.push({
+        label: monthLabels[monthIndex],
+        monthIndex,
+        year,
+      });
+    }
+    return months;
+  };
+
+  const mobile6Months = getMobile6Months();
   const monthIndexFromLabel = (label: any): number | null => {
     if (label == null) return null;
     const s = String(label).trim();
@@ -273,14 +295,33 @@ export function Dashboard() {
   const yearLabels = ["2026", "2027", "2028", "2029", "2030", "2031", "2032", "2033", "2034"];
 
   const monthlyChartData = useMemo(() => {
-    const base = monthLabels.map((m) => ({ label: m, revenue: 0 }));
+    // Use 6 months for mobile, 12 months for desktop
+    const base = isMobile
+      ? mobile6Months.map((m) => ({ label: m.label, revenue: 0 }))
+      : monthLabels.map((m) => ({ label: m, revenue: 0 }));
+
     for (const p of displayChartData as Array<any>) {
       const idx = monthIndexFromLabel(p?.label);
       if (idx == null) continue;
-      base[idx] = { label: monthLabels[idx], revenue: Number(p?.revenue ?? 0) || 0 };
+
+      // For mobile, only include data for months in rolling 6 months
+      if (isMobile) {
+        const rollingMonth = mobile6Months.find(m => m.monthIndex === idx);
+        if (!rollingMonth) continue;
+        const baseIdx = mobile6Months.indexOf(rollingMonth);
+        base[baseIdx] = {
+          label: rollingMonth.label,
+          revenue: Number(p?.revenue ?? 0) || 0
+        };
+      } else {
+        base[idx] = {
+          label: monthLabels[idx],
+          revenue: Number(p?.revenue ?? 0) || 0
+        };
+      }
     }
     return base;
-  }, [displayChartData]);
+  }, [displayChartData, isMobile, mobile6Months]);
 
   const normalizedYearlyChartData = useMemo(() => {
     const currentYear = new Date().getFullYear();
@@ -318,9 +359,31 @@ export function Dashboard() {
   }, [displayChartData, yearLabels]);
 
   const normalizedChartData = useMemo(() => {
-    if (chartPeriod !== "year") return displayChartData;
-    return normalizedYearlyChartData;
-  }, [chartPeriod, normalizedYearlyChartData, displayChartData]);
+    if (chartPeriod === "year") return normalizedYearlyChartData;
+
+    // For "today" period on mobile, show last 7 days (rolling)
+    if (chartPeriod === "today" && isMobile) {
+      const raw = (displayChartData ?? []) as Array<any>;
+      const today = new Date();
+      const currentDay = today.getDate();
+
+      const filtered = raw.filter((item) => {
+        const label = String(item?.label ?? "").trim();
+        const parts = label.split('/');
+        if (parts.length === 2) {
+          const day = parseInt(parts[0], 10);
+          // Show last 7 days (currentDay - 6 to currentDay)
+          const minDay = Math.max(1, currentDay - 6);
+          const maxDay = currentDay;
+          return day >= minDay && day <= maxDay;
+        }
+        return false;
+      });
+      return filtered;
+    }
+
+    return displayChartData;
+  }, [chartPeriod, normalizedYearlyChartData, displayChartData, isMobile]);
 
   const finalChartData = useMemo(() => {
     if (period === "month") return monthlyChartData;
@@ -513,21 +576,23 @@ export function Dashboard() {
                   className="text-xs"
                 />
               </div>
-              <button
+              <motion.button
                 onClick={handleConfirmDateFilter}
                 className="text-xs bg-primary hover:bg-primary/90 text-primary-foreground px-3 py-2 rounded-md font-medium transition-colors"
+                whileTap={{ scale: 0.95 }}
               >
                 Konfirmasi
-              </button>
-              <button
+              </motion.button>
+              <motion.button
                 onClick={() => {
                   setStaffStartDate("");
                   setStaffEndDate("");
                 }}
                 className="text-xs bg-secondary hover:bg-secondary/80 text-secondary-foreground px-3 py-2 rounded-md font-medium transition-colors"
+                whileTap={{ scale: 0.95 }}
               >
                 Reset
-              </button>
+              </motion.button>
             </div>
           </CardHeader>
           <CardContent>
