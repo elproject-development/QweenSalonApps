@@ -3,6 +3,9 @@ import { formatRupiah, formatDate } from "@/lib/format";
 import QRCode from "qrcode";
 import { Capacitor } from "@capacitor/core";
 import { Printer } from "@capgo/capacitor-printer";
+import { Preferences } from "@capacitor/preferences";
+import { connectToPrinter, isPrinterConnected, sendEscPosString } from "@/lib/bluetooth-printer";
+import { buildEscPosReceipt, type EscPosReceiptData } from "@/lib/escpos-receipt";
 
 export interface ReceiptData {
   receiptNumber: string;
@@ -41,13 +44,57 @@ const PAYMENT_LABEL: Record<string, string> = {
  * - @page size di dalam iframe berlaku hanya untuk iframe tersebut
  */
 export async function printReceipt(data: ReceiptData): Promise<void> {
+  // Get printer settings from Preferences (persistent storage)
+  let printerSettings = {
+    connectionType: "bluetooth" as "bluetooth" | "usb" | "wifi",
+    printCopies: 1,
+    bluetoothAddress: "",
+    wifiIp: "",
+    wifiPort: "9100",
+  };
+
+  try {
+    const { value } = await Preferences.get({ key: "qweensalon:printer_settings" });
+    if (value) {
+      const parsed = JSON.parse(value);
+      printerSettings = { ...printerSettings, ...parsed };
+    }
+  } catch {
+    // ignore
+  }
+
+  // Bluetooth raw printing
+  if (Capacitor.isNativePlatform() && printerSettings.connectionType === "bluetooth") {
+    try {
+      // Connect if not already connected
+      if (!isPrinterConnected() && printerSettings.bluetoothAddress) {
+        const connected = await connectToPrinter(printerSettings.bluetoothAddress);
+        if (!connected) {
+          throw new Error("Tidak dapat terhubung ke printer Bluetooth");
+        }
+      }
+
+      // Print receipt via Bluetooth raw
+      for (let i = 0; i < printerSettings.printCopies; i++) {
+        await printReceiptRawBluetooth(data);
+      }
+      return;
+    } catch (error) {
+      console.error("Bluetooth print failed, falling back to HTML:", error);
+      // Fall through to HTML printing
+    }
+  }
+
+  // HTML printing fallback
   const html = await buildCompleteHTML(data);
 
   // Android WebView/Capacitor sering memblokir popup window.open().
   // Selain itu, window.print() sering tidak memunculkan dialog print di WebView.
   // Untuk native platform, buka struk di browser sistem (Chrome) supaya user bisa print.
   if (Capacitor.isNativePlatform()) {
-    await Printer.printHtml({ name: "Struk", html });
+    for (let i = 0; i < printerSettings.printCopies; i++) {
+      await Printer.printHtml({ name: `Struk ${i + 1}/${printerSettings.printCopies}`, html });
+    }
     return;
   }
 
@@ -70,6 +117,58 @@ export async function printReceipt(data: ReceiptData): Promise<void> {
       printWindow.print();
     }, 500);
   };
+}
+
+// Bluetooth raw printing function using ESC/POS
+async function printReceiptRawBluetooth(data: ReceiptData): Promise<void> {
+  const payLabel = PAYMENT_LABEL[data.paymentMethod] ?? data.paymentMethod;
+
+  // Get receipt settings
+  const receiptSettings = (() => {
+    const defaults = {
+      companyName: "QweenSalon",
+      tagline: "Tempatnya Perawatan Kecantikan",
+      phone: "+62 812-3456-7890",
+      footerLine1: "Terima Kasih Sampai jumpa kembali!",
+      footerLine2: "www.qweensalon.web.id",
+    };
+
+    try {
+      const raw = localStorage.getItem("qweensalon:receipt_settings");
+      if (!raw) return defaults;
+      const parsed = JSON.parse(raw);
+      return { ...defaults, ...parsed };
+    } catch {
+      return defaults;
+    }
+  })();
+
+  // Build ESC/POS receipt data
+  const escPosData: EscPosReceiptData = {
+    companyName: receiptSettings.companyName,
+    tagline: receiptSettings.tagline,
+    phone: receiptSettings.phone,
+    receiptNumber: data.receiptNumber,
+    date: data.createdAt, // Pass raw date, will be formatted in buildEscPosReceipt
+    customer: data.customerName || "Umum",
+    items: data.items.map(item => ({
+      name: item.serviceName,
+      qty: item.quantity,
+      price: item.price,
+      subtotal: item.subtotal,
+    })),
+    subtotal: data.subtotal,
+    discount: data.discount ?? undefined,
+    tax: data.tax ?? undefined,
+    total: data.total,
+    paymentMethod: payLabel,
+    footer1: receiptSettings.footerLine1,
+    footer2: receiptSettings.footerLine2,
+  };
+
+  // Build and send ESC/POS string
+  const escPosString = buildEscPosReceipt(escPosData);
+  await sendEscPosString(escPosString);
 }
 
 async function printViaIframe(html: string): Promise<void> {
@@ -148,6 +247,28 @@ export function ReceiptPrint({ data, onDone }: ReceiptPrintProps) {
 // ─────────────────────────────────────────────
 async function buildCompleteHTML(d: ReceiptData): Promise<string> {
   const payLabel = PAYMENT_LABEL[d.paymentMethod] ?? d.paymentMethod;
+
+  // Get printer settings
+  const printerSettings = (() => {
+    const defaults = {
+      paperSize: "58mm" as "58mm" | "80mm",
+      connectionType: "bluetooth" as "bluetooth" | "usb" | "wifi",
+      autoPrint: false,
+      printCopies: 1,
+      bluetoothAddress: "",
+      wifiIp: "",
+      wifiPort: "9100",
+    };
+
+    try {
+      const raw = localStorage.getItem("qweensalon:printer_settings");
+      if (!raw) return defaults;
+      const parsed = JSON.parse(raw);
+      return { ...defaults, ...parsed };
+    } catch {
+      return defaults;
+    }
+  })();
 
   const receiptSettings = (() => {
     const defaults = {
@@ -262,6 +383,12 @@ async function buildCompleteHTML(d: ReceiptData): Promise<string> {
     `
     : "";
 
+  const paperWidth = printerSettings.paperSize === "80mm" ? "80mm" : "58mm";
+  const fontSize = printerSettings.paperSize === "80mm" ? "10pt" : "8pt";
+  const bigFontSize = printerSettings.paperSize === "80mm" ? "13pt" : "11pt";
+  const smallFontSize = printerSettings.paperSize === "80mm" ? "8pt" : "6.5pt";
+  const padding = printerSettings.paperSize === "80mm" ? "4mm 3mm 2mm 3mm" : "3mm 2.5mm 1mm 2.5mm";
+
   return `<!DOCTYPE html>
 <html lang="id">
 <head>
@@ -272,9 +399,9 @@ async function buildCompleteHTML(d: ReceiptData): Promise<string> {
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
   <title>Struk ${escHtml(d.receiptNumber)}</title>
   <style>
-    /* Ukuran kertas termal 58mm */
+    /* Ukuran kertas termal ${paperWidth} */
     @page {
-      size: 58mm auto;
+      size: ${paperWidth} auto;
       margin: 0;
     }
 
@@ -286,7 +413,7 @@ async function buildCompleteHTML(d: ReceiptData): Promise<string> {
 
     body {
       font-family: 'Poppins', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
-      font-size: 8pt;
+      font-size: ${fontSize};
       color: #000;
       background: #fff;
       width: 100%;
@@ -296,16 +423,16 @@ async function buildCompleteHTML(d: ReceiptData): Promise<string> {
     }
 
     .paper {
-      width: 58mm;
+      width: ${paperWidth};
       margin: 0 auto;
-      padding: 3mm 2.5mm 1mm 2.5mm;
+      padding: ${padding};
       zoom: 1.2; /* Perbesar skala keseluruhan sedikit */
     }
 
     .center { text-align: center; }
     .bold   { font-weight: bold; }
-    .big    { font-size: 11pt; letter-spacing: 0.2px; }
-    .small  { font-size: 6.5pt; }
+    .big    { font-size: ${bigFontSize}; letter-spacing: 0.2px; }
+    .small  { font-size: ${smallFontSize}; }
     .muted  { color: #222; }
     .mt-1   { margin-top: 1mm; }
     .mt-2   { margin-top: 2mm; }

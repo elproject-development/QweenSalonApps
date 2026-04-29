@@ -7,10 +7,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DatePicker } from "@/components/ui/date-picker";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Users, Receipt, Calendar as CalendarIcon, TrendingUp } from "lucide-react";
+import { Users, Receipt, Calendar as CalendarIcon, TrendingUp, BarChart3 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
+import { isPrinterConnected } from "@/lib/bluetooth-printer";
 
 export function Dashboard() {
   const isMobile = useIsMobile();
@@ -18,6 +19,15 @@ export function Dashboard() {
   const [staffStartDate, setStaffStartDate] = useState<string>("");
   const [staffEndDate, setStaffEndDate] = useState<string>("");
   const { toast } = useToast();
+
+  const [printerStatus, setPrinterStatus] = useState(isPrinterConnected());
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setPrinterStatus(isPrinterConnected());
+    }, 10000); // Cek setiap 10 detik
+    return () => clearInterval(interval);
+  }, []);
 
   const handleConfirmDateFilter = () => {
     const formatDate = (dateStr: string) => {
@@ -398,9 +408,19 @@ export function Dashboard() {
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">Ringkasan Bisnis</h1>
-          <p className="text-muted-foreground text-xs">Pantau performa Glam Studio Anda hari ini.</p>
+        <div className="flex-1 w-full">
+          <div className="flex items-start justify-between">
+            <div className="flex flex-col">
+              <h1 className="text-xl font-bold tracking-tight">Ringkasan Bisnis</h1>
+              <p className="text-muted-foreground text-xs">Pantau performa Salon anda hari ini.</p>
+            </div>
+            <div className="flex items-center pt-2 pr-1" key="printer-status-indicator">
+              <div className="relative flex h-2 w-2">
+                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${printerStatus ? 'bg-green-400' : 'bg-red-400'}`}></span>
+                <span className={`relative inline-flex rounded-full h-2 w-2 ${printerStatus ? 'bg-green-500' : 'bg-red-500'}`}></span>
+              </div>
+            </div>
+          </div>
         </div>
         <Select value={period} onValueChange={(val: any) => setPeriod(val)}>
           <SelectTrigger className="w-full sm:w-[180px]">
@@ -417,50 +437,62 @@ export function Dashboard() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-xs md:text-sm font-medium text-muted-foreground">Pendapatan</CardTitle>
-            <TrendingUp className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent>
-            {loadingSummary ? <Skeleton className="h-8 w-24" /> : (
-              <div className="text-lg md:text-2xl font-bold text-primary">{formatRupiah(animatedRevenue)}</div>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-xs md:text-sm font-medium text-muted-foreground">Transaksi</CardTitle>
-            <Receipt className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent>
-            {loadingSummary ? <Skeleton className="h-8 w-16" /> : (
-              <div className="text-lg md:text-2xl font-bold">{displaySummary.transactionCount}</div>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-xs md:text-sm font-medium text-muted-foreground">Pelanggan</CardTitle>
-            <Users className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent>
-            {loadingSummary ? <Skeleton className="h-8 w-16" /> : (
-              <div className="text-lg md:text-2xl font-bold">{displaySummary.customerCount}</div>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-xs md:text-sm font-medium text-muted-foreground">Reservasi</CardTitle>
-            <CalendarIcon className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent>
-            {loadingSummary ? <Skeleton className="h-8 w-16" /> : (
-              <div className="text-lg md:text-2xl font-bold">{displaySummary.appointmentCount}</div>
-            )}
-          </CardContent>
-        </Card>
+        <div className="relative p-[3px] rounded-xl overflow-hidden group">
+          <div className="absolute -inset-1 bg-primary rounded-xl blur-[3px] animate-[breathe_3s_ease-in-out_infinite]"></div>
+          <Card className="relative bg-card">
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <CardTitle className="text-xs md:text-sm font-medium text-muted-foreground">Pendapatan</CardTitle>
+              <TrendingUp className="h-4 w-4 text-primary" />
+            </CardHeader>
+            <CardContent>
+              {loadingSummary ? <Skeleton className="h-8 w-24" /> : (
+                <div className="text-lg md:text-2xl font-bold text-primary">{formatRupiah(animatedRevenue)}</div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+        <div className="relative p-[3px] rounded-xl overflow-hidden group">
+          <div className="absolute -inset-1 bg-primary rounded-xl blur-[3px] animate-[breathe_3s_ease-in-out_infinite]"></div>
+          <Card className="relative bg-card">
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <CardTitle className="text-xs md:text-sm font-medium text-muted-foreground">Transaksi</CardTitle>
+              <Receipt className="h-4 w-4 text-primary" />
+            </CardHeader>
+            <CardContent>
+              {loadingSummary ? <Skeleton className="h-8 w-16" /> : (
+                <div className="text-lg md:text-2xl font-bold">{displaySummary.transactionCount}</div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+        <div className="relative p-[3px] rounded-xl overflow-hidden group">
+          <div className="absolute -inset-1 bg-primary rounded-xl blur-[3px] animate-[breathe_3s_ease-in-out_infinite]"></div>
+          <Card className="relative bg-card">
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <CardTitle className="text-xs md:text-sm font-medium text-muted-foreground">Pelanggan</CardTitle>
+              <Users className="h-4 w-4 text-primary" />
+            </CardHeader>
+            <CardContent>
+              {loadingSummary ? <Skeleton className="h-8 w-16" /> : (
+                <div className="text-lg md:text-2xl font-bold">{displaySummary.customerCount}</div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+        <div className="relative p-[3px] rounded-xl overflow-hidden group">
+          <div className="absolute -inset-1 bg-primary rounded-xl blur-[3px] animate-[breathe_3s_ease-in-out_infinite]"></div>
+          <Card className="relative bg-card">
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <CardTitle className="text-xs md:text-sm font-medium text-muted-foreground">Reservasi</CardTitle>
+              <CalendarIcon className="h-4 w-4 text-primary" />
+            </CardHeader>
+            <CardContent>
+              {loadingSummary ? <Skeleton className="h-8 w-16" /> : (
+                <div className="text-lg md:text-2xl font-bold">{displaySummary.appointmentCount}</div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:gap-6">
@@ -507,7 +539,16 @@ export function Dashboard() {
                           fontSize: 12,
                         }}
                       />
-                      <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} maxBarSize={48} />
+                      <Bar
+                        dataKey="revenue"
+                        fill="hsl(var(--primary))"
+                        radius={[4, 4, 0, 0]}
+                        maxBarSize={48}
+                        isAnimationActive={true}
+                        animationBegin={0}
+                        animationDuration={800}
+                        animationEasing="ease-out"
+                      />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
@@ -520,27 +561,47 @@ export function Dashboard() {
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Layanan Terpopuler</CardTitle>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold">Layanan Terpopuler</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {loadingTop ? (
-                  Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)
-                ) : Array.isArray(displayTopServices) && displayTopServices.length > 0 ? (
-                  displayTopServices.map((service) => (
-                    <div key={service.serviceId} className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium text-xs md:text-sm">{service.serviceName}</p>
-                        <p className="text-[10px] md:text-xs text-muted-foreground">{service.count} kali</p>
+              {loadingTop ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+                </div>
+              ) : !displayTopServices?.length ? (
+                <div className="text-center py-8 text-muted-foreground text-sm">
+                  <BarChart3 className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                  Belum ada data transaksi
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {displayTopServices.map((s, i) => {
+                    const maxCount = displayTopServices[0]?.count ?? 1;
+                    const pct = Math.round((s.count / maxCount) * 100);
+                    return (
+                      <div key={s.serviceId} className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground w-4">{i + 1}.</span>
+                            <span className="text-sm font-medium">{s.serviceName}</span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-xs font-semibold text-primary">{formatRupiah(s.revenue)}</span>
+                            <span className="text-xs text-muted-foreground ml-2">({s.count}x)</span>
+                          </div>
+                        </div>
+                        <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-primary rounded-full transition-all duration-500"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
                       </div>
-                      <div className="text-xs md:text-sm font-semibold">{formatRupiah(service.revenue)}</div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-center text-xs md:text-sm text-muted-foreground py-4">Belum ada data layanan</div>
-                )}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

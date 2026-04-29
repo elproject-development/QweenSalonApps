@@ -160,22 +160,20 @@ export function Kasir() {
           </div>
         </div>
 
-        {isMobile && (
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="w-full justify-between text-muted-foreground font-normal border h-10 bg-muted/30"
-            onClick={() => setShowServiceList(!showServiceList)}
-          >
-            <div className="flex items-center gap-2">
-              <Plus className={`h-4 w-4 transition-transform ${showServiceList ? "rotate-45" : ""}`} />
-              {showServiceList ? "Tutup Daftar Layanan" : "Pilih Layanan"}
-            </div>
-            {showServiceList ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </Button>
-        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-between text-muted-foreground font-normal border h-10 bg-muted/30"
+          onClick={() => setShowServiceList(!showServiceList)}
+        >
+          <div className="flex items-center gap-2">
+            <Plus className={`h-4 w-4 transition-transform ${showServiceList ? "rotate-45" : ""}`} />
+            {showServiceList ? "Tutup Daftar Layanan" : "Pilih Layanan"}
+          </div>
+          {showServiceList ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </Button>
 
-        {(!isMobile || showServiceList || searchTerm.length >= 2) && (
+        {(showServiceList || searchTerm.length >= 2) && (
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3 animate-in slide-in-from-top-2 duration-300">
             {filteredServices.map((service: any) => {
               const inCart = cart.find(item => item.service.id === service.id);
@@ -191,8 +189,8 @@ export function Kasir() {
                         {inCart.quantity}
                       </div>
                     )}
-                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                      <UserRound className="w-5 h-5" />
+                    <div className="w-10 h-10 flex items-center justify-center">
+                      <img src="/layanan.png" alt="" className="w-8 h-8 object-contain" />
                     </div>
                     <div className="font-medium text-sm line-clamp-2">{service.name}</div>
                     <div className="text-primary font-bold text-sm">{formatRupiah(service.price)}</div>

@@ -5,6 +5,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import { NotificationProvider } from "@/components/notification-provider";
 import { useEffect, useState } from "react";
+import { Capacitor } from "@capacitor/core";
+import { Preferences } from "@capacitor/preferences";
+import { autoConnectToPrinter, initBluetooth, requestBluetoothPermissions } from "@/lib/bluetooth-printer";
 
 import NotFound from "@/pages/not-found";
 import Login from "@/pages/login";
@@ -91,6 +94,38 @@ function Router() {
 }
 
 function App() {
+  useEffect(() => {
+    const autoConnectPrinterOnStart = async () => {
+      if (!Capacitor.isNativePlatform()) return;
+
+      try {
+        const { value } = await Preferences.get({ key: "qweensalon:printer_settings" });
+        if (!value) return;
+        const parsed = JSON.parse(value);
+
+        if (parsed?.connectionType !== "bluetooth") return;
+        if (!parsed?.bluetoothAddress) return;
+
+        const inited = await initBluetooth();
+        if (!inited) return;
+
+        const permOk = await requestBluetoothPermissions();
+        if (!permOk) return;
+
+        await autoConnectToPrinter(parsed.bluetoothAddress);
+      } catch (error) {
+        console.error("Auto-connect printer on start failed:", error);
+      }
+    };
+
+    // Give WebView time to settle before initializing BLE
+    const timer = setTimeout(() => {
+      void autoConnectPrinterOnStart();
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <ThemeProvider defaultTheme="light" storageKey="qween-salon-theme">
       <NotificationProvider>

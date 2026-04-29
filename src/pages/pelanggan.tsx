@@ -215,8 +215,8 @@ export function Pelanggan() {
               <div className="flex items-end justify-between gap-3">
                 {/* Avatar & Main Info */}
                 <div className="flex gap-3 min-w-0">
-                  <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold shrink-0 ring-1 ring-primary/20 mb-0.5">
-                    {c.name.charAt(0).toUpperCase()}
+                  <div className="w-8 h-8 flex items-center justify-center shrink-0 mb-0.5">
+                    <img src="/woman.png" alt="" className="w-7 h-7 object-contain" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5 mb-2.5">
@@ -225,7 +225,15 @@ export function Pelanggan() {
                       </p>
                     </div>
                     <p className="text-xs text-muted-foreground flex items-center gap-1.5 truncate mb-0.5">
-                      <Phone className="w-3 h-3 text-primary/60" /> {c.phone}
+                      <img src="/whatsapp.png" alt="" className="w-3 h-3 object-contain" />
+                      <a
+                        href={`https://wa.me/${c.phone?.replace(/\D/g, '')}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:text-primary transition-colors"
+                      >
+                        {c.phone}
+                      </a>
                     </p>
                   </div>
                 </div>

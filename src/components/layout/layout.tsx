@@ -110,7 +110,7 @@ export function Layout({ children }: LayoutProps) {
 
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex flex-col w-64 bg-sidebar border-r border-sidebar-border h-screen sticky top-0">
-        <div className="h-16 flex items-center px-6 border-b border-sidebar-border">
+        <div className="h-16 flex items-center justify-center px-6 border-b border-sidebar-border">
           <div className="font-bold text-[32px] text-primary flex items-center gap-2" style={{ fontFamily: '"Style Script", cursive' }}>
             {appBrand}
           </div>

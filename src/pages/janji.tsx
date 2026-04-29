@@ -183,7 +183,14 @@ export function Janji() {
                     <div className="space-y-1">
                       <p className="text-xs text-muted-foreground flex items-center gap-1.5 truncate">
                         <Phone className="w-3 h-3 text-primary/60" />
-                        {appt.customerPhone}
+                        <a
+                          href={`https://wa.me/${appt.customerPhone?.replace(/\D/g, '')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="hover:text-primary transition-colors"
+                        >
+                          {appt.customerPhone}
+                        </a>
                       </p>
                       <p className="text-xs text-muted-foreground flex items-center gap-1.5 truncate">
                         <Scissors className="w-3 h-3 text-primary/60" />

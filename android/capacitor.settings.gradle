@@ -2,6 +2,9 @@
 include ':capacitor-android'
 project(':capacitor-android').projectDir = new File('../node_modules/.pnpm/@capacitor+android@8.3.0_@capacitor+core@8.3.0/node_modules/@capacitor/android/capacitor')
 
+include ':capacitor-community-bluetooth-le'
+project(':capacitor-community-bluetooth-le').projectDir = new File('../node_modules/.pnpm/@capacitor-community+blueto_c77097921e17dffa4d524ef2802618b0/node_modules/@capacitor-community/bluetooth-le/android')
+
 include ':capacitor-browser'
 project(':capacitor-browser').projectDir = new File('../node_modules/.pnpm/@capacitor+browser@8.0.3_@capacitor+core@8.3.0/node_modules/@capacitor/browser/android')
 
@@ -10,6 +13,9 @@ project(':capacitor-filesystem').projectDir = new File('../node_modules/.pnpm/@c
 
 include ':capacitor-local-notifications'
 project(':capacitor-local-notifications').projectDir = new File('../node_modules/.pnpm/@capacitor+local-notifications@8.0.2_@capacitor+core@8.3.0/node_modules/@capacitor/local-notifications/android')
+
+include ':capacitor-preferences'
+project(':capacitor-preferences').projectDir = new File('../node_modules/.pnpm/@capacitor+preferences@8.0.1_@capacitor+core@8.3.0/node_modules/@capacitor/preferences/android')
 
 include ':capacitor-share'
 project(':capacitor-share').projectDir = new File('../node_modules/.pnpm/@capacitor+share@8.0.1_@capacitor+core@8.3.0/node_modules/@capacitor/share/android')

@@ -132,8 +132,8 @@ export function Staf() {
             <Card key={s.id} className={!s.isActive ? "opacity-60" : ""}>
               <CardContent className="py-3 sm:py-4">
                 <div className="flex items-start sm:items-center gap-3">
-                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm sm:text-base font-bold shrink-0">
-                    {s.name.charAt(0).toUpperCase()}
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center shrink-0">
+                    <img src="/staf.png" alt="" className="w-8 h-8 sm:w-9 sm:h-9 object-contain" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 min-w-0">
@@ -143,7 +143,14 @@ export function Staf() {
                     <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 mt-1.5 min-w-0">
                       <span className="text-[11px] sm:text-xs text-muted-foreground flex items-center gap-1 min-w-0">
                         <Phone className="w-3 h-3" />
-                        <span className="truncate">{s.phone}</span>
+                        <a
+                          href={`https://wa.me/${s.phone?.replace(/\D/g, '')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="truncate hover:text-primary transition-colors"
+                        >
+                          {s.phone}
+                        </a>
                       </span>
                       <span className="text-[11px] sm:text-xs text-primary flex items-center gap-2 font-medium">
                         <Percent className="w-3 h-3" />

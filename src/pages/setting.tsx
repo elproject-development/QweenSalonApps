@@ -6,7 +6,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Settings, Palette, Bell, Shield, HelpCircle, Trash2, Receipt, Moon, Sun, Type, Download, Mail, Phone, ExternalLink, FileSpreadsheet, BookOpen, DollarSign, FileText, BarChart3, Users, Calendar, LogOut } from "lucide-react";
+import { Settings, Palette, Bell, Shield, HelpCircle, Trash2, Receipt, Moon, Sun, Type, Download, Mail, Phone, ExternalLink, FileSpreadsheet, BookOpen, DollarSign, FileText, BarChart3, Users, Calendar, LogOut, Printer, Bluetooth, Usb, Wifi, CheckCircle2, XCircle, RefreshCw } from "lucide-react";
 import * as XLSX from "xlsx-js-style";
 import { useEffect, useState } from "react";
 import { supabase } from "@/utils/supabase";
@@ -16,6 +16,9 @@ import { useNotifications } from "@/components/notification-provider";
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
+import { Preferences } from "@capacitor/preferences";
+import { scanForPrinters, connectToPrinter, disconnectPrinter, isPrinterConnected, getConnectedPrinter, sendEscPosString } from "@/lib/bluetooth-printer";
+import { buildTestPrint } from "@/lib/escpos-receipt";
 
 export default function Setting() {
   const [isDeleting, setIsDeleting] = useState(false);
@@ -128,6 +131,84 @@ export default function Setting() {
       return DEFAULT_RECEIPT_SETTINGS;
     }
   });
+
+  // Printer Settings
+  const PRINTER_SETTINGS_STORAGE_KEY = "qweensalon:printer_settings";
+  const DEFAULT_PRINTER_SETTINGS = {
+    paperSize: "58mm" as "58mm" | "80mm",
+    connectionType: "bluetooth" as "bluetooth" | "usb" | "wifi",
+    autoPrint: false,
+    printCopies: 1,
+    bluetoothAddress: "",
+    wifiIp: "",
+    wifiPort: "9100",
+  };
+
+  const [printerSettings, setPrinterSettings] = useState(DEFAULT_PRINTER_SETTINGS);
+  const [printerSettingsLoaded, setPrinterSettingsLoaded] = useState(false);
+
+  // Load printer settings from Preferences on mount
+  useEffect(() => {
+    const loadPrinterSettings = async () => {
+      try {
+        const { value } = await Preferences.get({ key: PRINTER_SETTINGS_STORAGE_KEY });
+        console.log("Loaded printer settings from Preferences:", value);
+        if (value) {
+          const parsed = JSON.parse(value);
+          setPrinterSettings({ ...DEFAULT_PRINTER_SETTINGS, ...parsed });
+        }
+      } catch (error) {
+        console.error("Failed to load printer settings:", error);
+        toast({ title: "Error", description: `Load failed: ${error}`, variant: "destructive" });
+      }
+      setPrinterSettingsLoaded(true);
+    };
+    loadPrinterSettings();
+  }, []);
+
+  const [isScanningPrinter, setIsScanningPrinter] = useState(false);
+  const [printerConnected, setPrinterConnected] = useState(false);
+  const [availablePrinters, setAvailablePrinters] = useState<{ name: string; address: string }[]>([]);
+
+  // Check printer connection status on mount
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) {
+      setPrinterConnected(isPrinterConnected());
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!printerSettingsLoaded) return; // Don't save until loaded
+    const saveSettings = async () => {
+      try {
+        await Preferences.set({
+          key: PRINTER_SETTINGS_STORAGE_KEY,
+          value: JSON.stringify(printerSettings)
+        });
+        console.log("Printer settings saved:", printerSettings);
+      } catch (error) {
+        console.error("Failed to save printer settings:", error);
+      }
+    };
+    saveSettings();
+  }, [printerSettings, printerSettingsLoaded]);
+
+  // Force save printer settings (call this when selecting a printer)
+  const forceSavePrinterSettings = async (settings: typeof DEFAULT_PRINTER_SETTINGS) => {
+    try {
+      await Preferences.set({
+        key: PRINTER_SETTINGS_STORAGE_KEY,
+        value: JSON.stringify(settings)
+      });
+      console.log("Force saved printer settings:", settings);
+      // Verify it was saved
+      const { value } = await Preferences.get({ key: PRINTER_SETTINGS_STORAGE_KEY });
+      console.log("Verified saved settings:", value);
+    } catch (error) {
+      console.error("Failed to force save printer settings:", error);
+      toast({ title: "Error", description: `Failed to save: ${error}`, variant: "destructive" });
+    }
+  };
 
   useEffect(() => {
     try {
@@ -886,6 +967,295 @@ export default function Setting() {
           </CardContent>
         </Card>
 
+        {/* Printer Thermal */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Printer className="w-4 h-4" />
+              Printer Thermal
+            </CardTitle>
+            <CardDescription>Pengaturan printer thermal 58mm/80mm untuk Android</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Connection Status */}
+            <div className={`flex items-center gap-3 p-3 rounded-lg border ${printerConnected ? "border-green-500/50 bg-green-500/10" : "border-muted bg-muted/30"}`}>
+              {printerConnected ? (
+                <CheckCircle2 className="w-5 h-5 text-green-500" />
+              ) : (
+                <XCircle className="w-5 h-5 text-muted-foreground" />
+              )}
+              <div>
+                <p className="text-sm font-medium">{printerConnected ? "Printer Terhubung" : "Printer Tidak Terhubung"}</p>
+                <p className="text-xs text-muted-foreground">
+                  {printerSettings.connectionType === "bluetooth" && printerSettings.bluetoothAddress
+                    ? `Bluetooth: ${printerSettings.bluetoothAddress}`
+                    : printerSettings.connectionType === "wifi" && printerSettings.wifiIp
+                    ? `WiFi: ${printerSettings.wifiIp}:${printerSettings.wifiPort}`
+                    : printerSettings.connectionType === "usb"
+                    ? "USB"
+                    : "Pilih koneksi printer"}
+                </p>
+              </div>
+            </div>
+
+            {/* Paper Size */}
+            <div className="grid gap-2">
+              <Label>Ukuran Kertas</Label>
+              <Select
+                value={printerSettings.paperSize}
+                onValueChange={(val: "58mm" | "80mm") => setPrinterSettings((p) => ({ ...p, paperSize: val }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih ukuran kertas" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="58mm">58mm (Standart)</SelectItem>
+                  <SelectItem value="80mm">80mm</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Connection Type */}
+            <div className="grid gap-2">
+              <Label>Tipe Koneksi</Label>
+              <Select
+                value={printerSettings.connectionType}
+                onValueChange={(val: "bluetooth" | "usb" | "wifi") => setPrinterSettings((p) => ({ ...p, connectionType: val }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih tipe koneksi" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="bluetooth">
+                    <div className="flex items-center gap-2">
+                      <Bluetooth className="w-4 h-4" />
+                      Bluetooth
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="usb">
+                    <div className="flex items-center gap-2">
+                      <Usb className="w-4 h-4" />
+                      USB
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="wifi">
+                    <div className="flex items-center gap-2">
+                      <Wifi className="w-4 h-4" />
+                      WiFi / LAN
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Bluetooth Settings */}
+            {printerSettings.connectionType === "bluetooth" && (
+              <div className="space-y-3">
+                <div className="grid gap-2">
+                  <Label>Alamat Bluetooth</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={printerSettings.bluetoothAddress}
+                      onChange={(e) => {
+                        const newSettings = { ...printerSettings, bluetoothAddress: e.target.value };
+                        setPrinterSettings(newSettings);
+                        forceSavePrinterSettings(newSettings);
+                      }}
+                      placeholder="Contoh: 00:11:22:33:44:55"
+                      className="flex-1"
+                    />
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={async () => {
+                        if (!Capacitor.isNativePlatform()) {
+                          toast({ title: "Info", description: "Scan Bluetooth hanya tersedia di perangkat Android", variant: "default" });
+                          return;
+                        }
+                        setIsScanningPrinter(true);
+                        setAvailablePrinters([]);
+                        try {
+                          toast({ title: "Scanning", description: "Mencari printer Bluetooth (10 detik)...", variant: "default" });
+                          const printers = await scanForPrinters(10000);
+                          if (printers.length === 0) {
+                            toast({ title: "Tidak Ditemukan", description: "Tidak ada printer Bluetooth terdeteksi. Pastikan printer menyala dan dalam jangkauan.", variant: "default" });
+                          } else {
+                            setAvailablePrinters(printers);
+                            toast({ title: "Ditemukan", description: `${printers.length} printer ditemukan`, variant: "success" });
+                          }
+                        } catch (error: any) {
+                          toast({ title: "Error", description: error.message || "Gagal scan Bluetooth", variant: "destructive" });
+                        } finally {
+                          setIsScanningPrinter(false);
+                        }
+                      }}
+                      disabled={isScanningPrinter}
+                    >
+                      <RefreshCw className={`w-4 h-4 ${isScanningPrinter ? "animate-spin" : ""}`} />
+                    </Button>
+                  </div>
+                </div>
+                {availablePrinters.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>Printer Ditemukan</Label>
+                    <div className="space-y-1">
+                      {availablePrinters.map((p) => (
+                        <Button
+                          key={p.address}
+                          variant="outline"
+                          className="w-full justify-start"
+                          onClick={async () => {
+                            const newSettings = { ...printerSettings, bluetoothAddress: p.address };
+                            setPrinterSettings(newSettings);
+                            // Force save immediately
+                            await forceSavePrinterSettings(newSettings);
+                            setAvailablePrinters([]);
+                            toast({ title: "Menghubungkan", description: `Menghubungkan ke ${p.name}...`, variant: "default" });
+                            const connected = await connectToPrinter(p.address);
+                            if (connected) {
+                              setPrinterConnected(true);
+                              toast({ title: "Terhubung", description: `Berhasil terhubung ke ${p.name}`, variant: "success" });
+                            } else {
+                              toast({ title: "Gagal", description: "Tidak dapat terhubung ke printer", variant: "destructive" });
+                            }
+                          }}
+                        >
+                          <Bluetooth className="w-4 h-4 mr-2" />
+                          {p.name} ({p.address})
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* WiFi Settings */}
+            {printerSettings.connectionType === "wifi" && (
+              <div className="grid gap-3">
+                <div className="grid gap-2">
+                  <Label>IP Address</Label>
+                  <Input
+                    value={printerSettings.wifiIp}
+                    onChange={(e) => setPrinterSettings((p) => ({ ...p, wifiIp: e.target.value }))}
+                    placeholder="Contoh: 192.168.1.100"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Port</Label>
+                  <Input
+                    value={printerSettings.wifiPort}
+                    onChange={(e) => setPrinterSettings((p) => ({ ...p, wifiPort: e.target.value }))}
+                    placeholder="Contoh: 9100"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Print Options */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="grid gap-1">
+                  <Label>Auto Print</Label>
+                  <p className="text-xs text-muted-foreground">Cetak otomatis setelah transaksi</p>
+                </div>
+                <Switch
+                  checked={printerSettings.autoPrint}
+                  onCheckedChange={(v) => setPrinterSettings((p) => ({ ...p, autoPrint: v }))}
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label>Jumlah Copy</Label>
+                <Select
+                  value={String(printerSettings.printCopies)}
+                  onValueChange={(val) => setPrinterSettings((p) => ({ ...p, printCopies: parseInt(val) }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Pilih jumlah copy" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1 Copy</SelectItem>
+                    <SelectItem value="2">2 Copy</SelectItem>
+                    <SelectItem value="3">3 Copy</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Test Print Button */}
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={async () => {
+                  if (!Capacitor.isNativePlatform()) {
+                    toast({ title: "Info", description: "Test print hanya tersedia di perangkat Android", variant: "default" });
+                    return;
+                  }
+
+                  // Bluetooth raw printing
+                  if (printerSettings.connectionType === "bluetooth") {
+                    try {
+                      // Connect if not already connected
+                      if (!isPrinterConnected() && printerSettings.bluetoothAddress) {
+                        toast({ title: "Menghubungkan", description: "Menghubungkan ke printer...", variant: "default" });
+                        const connected = await connectToPrinter(printerSettings.bluetoothAddress);
+                        if (!connected) {
+                          toast({ title: "Gagal", description: "Tidak dapat terhubung ke printer Bluetooth", variant: "destructive" });
+                          return;
+                        }
+                      }
+
+                      // Build and send ESC/POS test print
+                      const escPosString = buildTestPrint(receiptSettings.companyName || "QweenSalon");
+                      await sendEscPosString(escPosString);
+
+                      setPrinterConnected(true);
+                      toast({ title: "Berhasil", description: "Test print berhasil dikirim via Bluetooth", variant: "success" });
+                    } catch (error: any) {
+                      setPrinterConnected(false);
+                      toast({ title: "Gagal", description: error.message || "Gagal test print Bluetooth", variant: "destructive" });
+                    }
+                    return;
+                  }
+
+                  // Fallback to HTML printing for other connection types
+                  try {
+                    const { Printer } = await import("@capgo/capacitor-printer");
+                    const testHtml = `
+                      <div style="font-family: monospace; font-size: 12px; text-align: center; padding: 10px;">
+                        <div style="font-weight: bold; font-size: 16px;">TEST PRINT</div>
+                        <div>QweenSalon</div>
+                        <div style="margin-top: 10px;">Printer OK!</div>
+                        <div>${new Date().toLocaleString("id-ID")}</div>
+                      </div>
+                    `;
+                    await Printer.printHtml({ name: "Test Print", html: testHtml });
+                    setPrinterConnected(true);
+                    toast({ title: "Berhasil", description: "Test print berhasil dikirim", variant: "success" });
+                  } catch (error: any) {
+                    setPrinterConnected(false);
+                    toast({ title: "Gagal", description: error.message || "Gagal test print", variant: "destructive" });
+                  }
+                }}
+              >
+                <Printer className="w-4 h-4 mr-2" />
+                Test Print
+              </Button>
+              <Button
+                className="flex-1"
+                onClick={async () => {
+                  await forceSavePrinterSettings(printerSettings);
+                  toast({ title: "Berhasil", description: "Pengaturan printer disimpan", variant: "success" });
+                }}
+              >
+                Simpan
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Bantuan */}
         <Card>
           <CardHeader>
@@ -1018,26 +1388,31 @@ export default function Setting() {
               <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-2 text-primary">
-                    <HelpCircle className="w-5 h-5 text-primary" />
+                    <img src="/settings.png" alt="" className="w-5 h-5 object-contain" />
                     Dukungan Teknis
                   </DialogTitle>
-                  <DialogDescription className="text-left">Copyright © 2026 ELkasirApps v 1.0</DialogDescription>
+                  <DialogDescription className="text-left">Copyright © 2026 QweenSalon Apps</DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
-                  <div className="flex items-center gap-4 p-4 rounded-lg border bg-muted/50">
+                  <div className="flex items-center gap-4 p-4 rounded-lg border-2 border-pink-500 bg-muted/50 shadow-[0_0_10px_rgba(236,72,153,0.5),0_0_20px_rgba(236,72,153,0.3),0_0_30px_rgba(236,72,153,0.2)]">
                     <div>
                       <p className="text-sm font-bold">EL Project Development</p>
                       <p className="text-xs text-muted-foreground">Official System Developer</p>
                     </div>
+                    <div className="relative ml-auto">
+                    <div className="absolute inset-0 rounded-full bg-pink-500 animate-ping opacity-30"></div>
+                    <div className="absolute inset-0 rounded-full bg-pink-500 animate-pulse opacity-50"></div>
+                    <img src="/hacker.png" alt="" className="w-10 h-10 object-contain relative z-10" />
+                  </div>
                   </div>
                   <div className="space-y-3">
                     <a href="mailto:support@elproject.dev" className="flex items-center gap-3 p-3 rounded-md hover:bg-muted transition-colors group">
-                      <Mail className="h-4 w-4" />
+                      <img src="/email.png" alt="" className="w-4 h-4 object-contain" />
                       <span className="text-sm">elproject.dev@gmail.com</span>
                       <ExternalLink className="h-3 w-3 ml-auto opacity-0 group-hover:opacity-100" />
                     </a>
                     <a href="https://wa.me/628123456789" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-3 rounded-md hover:bg-muted transition-colors group">
-                      <Phone className="h-4 w-4" />
+                      <img src="/whatsapp.png" alt="" className="w-4 h-4 object-contain" />
                       <span className="text-sm">+62 838-6718-0887</span>
                       <ExternalLink className="h-3 w-3 ml-auto opacity-0 group-hover:opacity-100" />
                     </a>

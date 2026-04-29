@@ -6,12 +6,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Lock, Mail, Loader2 } from "lucide-react";
+import { Lock, Mail, Loader2, Eye, EyeOff } from "lucide-react";
 
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
@@ -68,12 +69,10 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4">
       <Card className="w-full max-w-md shadow-lg border-primary/10">
         <CardHeader className="space-y-1 text-center">
-          <div className="flex justify-center mb-4">
-            <div className="p-3 rounded-full bg-primary/10 text-primary">
-              <Lock className="w-8 h-8" />
-            </div>
+          <div className="flex justify-center">
+            <img src="/logo.png" alt="QweenSalon Logo" className="w-40 h-40 object-contain" />
           </div>
-          <CardTitle className="text-2xl font-bold tracking-tight">Login ELKasirApps 1.0</CardTitle>
+          <CardTitle className="text-2xl font-bold tracking-tight">QweenSalon</CardTitle>
           <CardDescription className="text-center text-xs text-muted-foreground">
             Masukkan email dan password untuk masuk ke dashboard
           </CardDescription>
@@ -87,7 +86,7 @@ export default function Login() {
                 <Input
                   id="email"
                   type="email"
-                  placeholder="nama@email.com"
+                  placeholder="masukkan email"
                   className="pl-10"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -104,14 +103,25 @@ export default function Login() {
                 <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="password"
-                  type="password"
-                  placeholder="••••••••"
-                  className="pl-10"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="masukkan password"
+                  className="pl-10 pr-10"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={isLoading}
                   required
                 />
+                <button
+                  type="button"
+                  className="absolute right-3 top-3 text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
               </div>
             </div>
           </CardContent>
